@@ -1,0 +1,724 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+</head>
+<body>
+<title>S:M Testing Hub</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Oswald:wght@400;500;600;700&family=Public+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.5.1/chart.umd.min.js"></script>
+<style>
+:root{
+  color-scheme: light;
+  --bg:#f6f3ec;
+  --surface:#ffffff;
+  --surface-2:#efe9db;
+  --surface-3:#e6ddc9;
+  --border:#e0d8c4;
+  --ink:#211d3c;
+  --ink-2:#5a5674;
+  --ink-muted:#8b87a0;
+  --accent:#0b5e97;
+  --accent-ink:#ffffff;
+  --cat-speed:#d9700f;
+  --cat-strength:#b31f2b;
+  --cat-bounce:#2c8a3d;
+  --cat-agility:#0a66a6;
+  --cat-crawl:#4d4fa1;
+  --chart-line:#233065;
+  --chart-avg:#9b96ad;
+  --chart-seq:#2a78d6;
+  --chart-seq-track:#e1e6ee;
+  --girls-line:#c94f7c;
+  --boys-line:#2a78d6;
+  --status-good:#0ca30c;
+  --status-warn:#c98500;
+  --status-crit:#d03b3b;
+  --shadow: 0 1px 2px rgba(33,29,60,0.06), 0 8px 20px -12px rgba(33,29,60,0.18);
+}
+@media (prefers-color-scheme: dark){
+  :root:not([data-theme="light"]){
+    color-scheme: dark;
+    --bg:#12142a;
+    --surface:#1a1d3a;
+    --surface-2:#212549;
+    --surface-3:#2a2f5c;
+    --border:#333868;
+    --ink:#f1f0fa;
+    --ink-2:#c1bfda;
+    --ink-muted:#8c8fb8;
+    --accent:#6bb1ea;
+    --accent-ink:#0b1330;
+    --cat-speed:#f0954b;
+    --cat-strength:#e8636e;
+    --cat-bounce:#59c26b;
+    --cat-agility:#5aa8e8;
+    --cat-crawl:#9497d6;
+    --chart-line:#aebdf2;
+    --chart-avg:#6f6c8c;
+    --chart-seq:#3987e5;
+    --chart-seq-track:#293061;
+    --girls-line:#e58cae;
+    --boys-line:#3987e5;
+    --status-good:#3fce3f;
+    --status-warn:#f0b23c;
+    --status-crit:#e97575;
+    --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 28px -14px rgba(0,0,0,0.6);
+  }
+}
+:root[data-theme="dark"]{
+  color-scheme: dark;
+  --bg:#12142a;
+  --surface:#1a1d3a;
+  --surface-2:#212549;
+  --surface-3:#2a2f5c;
+  --border:#333868;
+  --ink:#f1f0fa;
+  --ink-2:#c1bfda;
+  --ink-muted:#8c8fb8;
+  --accent:#6bb1ea;
+  --accent-ink:#0b1330;
+  --cat-speed:#f0954b;
+  --cat-strength:#e8636e;
+  --cat-bounce:#59c26b;
+  --cat-agility:#5aa8e8;
+  --cat-crawl:#9497d6;
+  --chart-line:#aebdf2;
+  --chart-avg:#6f6c8c;
+  --chart-seq:#3987e5;
+  --chart-seq-track:#293061;
+  --girls-line:#e58cae;
+  --boys-line:#3987e5;
+  --status-good:#3fce3f;
+  --status-warn:#f0b23c;
+  --status-crit:#e97575;
+  --shadow: 0 1px 2px rgba(0,0,0,0.3), 0 12px 28px -14px rgba(0,0,0,0.6);
+}
+*{box-sizing:border-box;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--ink);
+  font-family:"Public Sans",system-ui,-apple-system,"Segoe UI",sans-serif;
+  -webkit-font-smoothing:antialiased;
+}
+.wrap{
+  max-width:1180px;
+  margin:0 auto;
+  padding:20px 20px 60px;
+}
+h1,h2,h3{font-family:"Oswald",system-ui,sans-serif; text-wrap:balance; margin:0;}
+.eyebrow{
+  font-family:"Oswald",system-ui,sans-serif;
+  font-size:12px; letter-spacing:.12em; text-transform:uppercase;
+  color:var(--ink-muted); font-weight:500;
+}
+/* ---------- header ---------- */
+.topbar{
+  display:flex; align-items:center; gap:16px; flex-wrap:wrap;
+  padding:18px 0 16px;
+}
+.crest{flex:0 0 auto; width:52px; height:65px;}
+.brand{flex:1 1 260px; min-width:0;}
+.brand h1{font-size:26px; font-weight:700; letter-spacing:.01em;}
+.brand .eyebrow{margin-bottom:2px;}
+.headchips{display:flex; gap:8px; flex-wrap:wrap; align-items:center;}
+.chip{
+  background:var(--surface); border:1px solid var(--border); color:var(--ink-2);
+  border-radius:999px; padding:6px 12px; font-size:12.5px; font-weight:600;
+  white-space:nowrap;
+}
+.chip b{color:var(--ink); font-weight:700;}
+/* ---------- tabs ---------- */
+.tabs{
+  display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:22px;
+  overflow-x:auto;
+}
+.tab-btn{
+  font-family:"Oswald",system-ui,sans-serif;
+  appearance:none; border:none; background:none; cursor:pointer;
+  padding:10px 16px; font-size:14.5px; font-weight:600; letter-spacing:.02em;
+  color:var(--ink-muted); border-bottom:2.5px solid transparent; margin-bottom:-1px;
+  white-space:nowrap;
+}
+.tab-btn:hover{color:var(--ink-2);}
+.tab-btn[aria-selected="true"]{color:var(--accent); border-bottom-color:var(--accent);}
+.tab-btn:focus-visible{outline:2px solid var(--accent); outline-offset:2px;}
+section[role="tabpanel"][hidden]{display:none;}
+/* ---------- generic ---------- */
+.card{
+  background:var(--surface); border:1px solid var(--border); border-radius:14px;
+  box-shadow:var(--shadow);
+}
+.section-title{font-size:19px; font-weight:600; margin:0 0 12px;}
+.section-sub{font-size:13px; color:var(--ink-muted); margin:2px 0 16px;}
+.grid-row{display:grid; gap:16px;}
+/* ---------- stat tiles ---------- */
+.stat-row{display:grid; grid-template-columns:repeat(5,1fr); gap:12px; margin-bottom:22px;}
+.stat-tile{padding:16px 16px 14px;}
+.stat-tile .v{font-family:"Oswald",system-ui,sans-serif; font-size:30px; font-weight:700; font-variant-numeric:tabular-nums; line-height:1.05;}
+.stat-tile .l{font-size:12px; color:var(--ink-muted); font-weight:600; text-transform:uppercase; letter-spacing:.06em; margin-top:4px;}
+/* ---------- overview two col ---------- */
+.ov-cols{display:grid; grid-template-columns:1fr 1.35fr; gap:16px; margin-bottom:16px; align-items:start;}
+.pad{padding:18px 20px;}
+.identity-row{display:flex; align-items:center; gap:10px; margin-bottom:10px;}
+.identity-row .name{width:140px; flex:0 0 auto; font-size:13px; color:var(--ink-2); font-weight:600;}
+.identity-row .track{flex:1; height:10px; border-radius:6px; background:var(--surface-3); overflow:hidden;}
+.identity-row .fill{height:100%; background:var(--chart-seq); border-radius:6px;}
+.identity-row .n{width:22px; text-align:right; font-size:12.5px; font-variant-numeric:tabular-nums; color:var(--ink-muted); font-weight:600;}
+.leader-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(200px,1fr)); gap:10px;}
+.leader-card{border-left:4px solid var(--cat); padding:12px 14px; border-radius:0 10px 10px 0; background:var(--surface-2);}
+.leader-card .cat-name{font-weight:700; font-size:13.5px; color:var(--ink); display:flex; align-items:center; gap:6px;}
+.dot{width:8px; height:8px; border-radius:50%; background:var(--cat); flex:0 0 auto;}
+.leader-line{display:flex; justify-content:space-between; gap:8px; font-size:12.5px; margin-top:6px; color:var(--ink-2);}
+.leader-line .who{font-weight:600; color:var(--ink);}
+.leader-line .pct{font-variant-numeric:tabular-nums; color:var(--ink-muted);}
+/* ---------- controls ---------- */
+.control-row{display:flex; gap:10px; flex-wrap:wrap; align-items:center; margin-bottom:16px;}
+.metric-chips{display:flex; gap:6px; flex-wrap:wrap;}
+.metric-chip{
+  appearance:none; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:600;
+  border:1px solid var(--border); background:var(--surface); color:var(--ink-2);
+  border-radius:8px; padding:7px 11px 7px 9px; display:flex; align-items:center; gap:6px;
+}
+.metric-chip .dot{width:7px; height:7px;}
+.metric-chip[aria-pressed="true"]{background:var(--ink); color:var(--bg); border-color:var(--ink);}
+.metric-chip[aria-pressed="true"] .dot{background:currentColor; opacity:.9;}
+.segmented{display:inline-flex; background:var(--surface-2); border:1px solid var(--border); border-radius:9px; padding:3px; gap:2px;}
+.segmented button{
+  appearance:none; border:none; cursor:pointer; font-family:inherit; font-size:12.5px; font-weight:600;
+  background:none; color:var(--ink-2); padding:6px 13px; border-radius:6px;
+}
+.segmented button[aria-pressed="true"]{background:var(--surface); color:var(--ink); box-shadow:var(--shadow);}
+.search-input{
+  border:1px solid var(--border); background:var(--surface); color:var(--ink);
+  border-radius:8px; padding:8px 12px; font-size:13px; font-family:inherit; min-width:190px;
+}
+.search-input:focus-visible, .metric-chip:focus-visible, .segmented button:focus-visible, .tab-btn:focus-visible{
+  outline:2px solid var(--accent); outline-offset:1px;
+}
+/* ---------- table ---------- */
+.table-wrap{overflow-x:auto; border:1px solid var(--border); border-radius:14px; background:var(--surface);}
+table{width:100%; border-collapse:collapse; min-width:640px;}
+thead th{
+  text-align:left; font-size:11.5px; text-transform:uppercase; letter-spacing:.06em; font-weight:700;
+  color:var(--ink-muted); padding:12px 14px; border-bottom:1px solid var(--border); white-space:nowrap;
+}
+tbody td{padding:10px 14px; border-bottom:1px solid var(--border); font-size:13.5px; vertical-align:middle;}
+tbody tr:last-child td{border-bottom:none;}
+tbody tr:hover{background:var(--surface-2);}
+.rank-pill{
+  display:inline-flex; align-items:center; justify-content:center; width:26px; height:26px; border-radius:50%;
+  font-weight:700; font-size:12.5px; font-variant-numeric:tabular-nums; background:var(--surface-3); color:var(--ink-2);
+}
+.rank-pill.g{background:#e9c46a; color:#4a3400;}
+.rank-pill.s{background:#c9c9d6; color:#33334a;}
+.rank-pill.b{background:#d59a6b; color:#4a2c0c;}
+.namecell{font-weight:600;}
+.sexdot{display:inline-block; width:7px; height:7px; border-radius:50%; margin-right:6px;}
+.sexdot.Girl{background:var(--girls-line);}
+.sexdot.Boy{background:var(--boys-line);}
+.valcell{font-variant-numeric:tabular-nums; font-weight:700; position:relative; z-index:1;}
+.pctbar-cell{position:relative;}
+.pctbar-track{position:absolute; inset:6px 14px; border-radius:5px; background:var(--chart-seq-track); z-index:0;}
+.pctbar-fill{position:absolute; top:6px; bottom:6px; left:14px; border-radius:5px; background:var(--chart-seq); opacity:.55; z-index:0;}
+.delta-cell{font-variant-numeric:tabular-nums; font-size:12.5px; white-space:nowrap;}
+.delta-cell.good{color:var(--status-good);}
+.delta-cell.crit{color:var(--status-crit);}
+.spark-cell svg{display:block;}
+/* ---------- profiles ---------- */
+.profiles-layout{display:grid; grid-template-columns:340px 1fr; gap:16px; align-items:start;}
+.athlete-list{max-height:none;}
+.athlete-grid{display:flex; flex-direction:column; gap:8px; padding:10px; max-height:640px; overflow-y:auto;}
+.athlete-card{
+  display:flex; align-items:center; gap:10px; padding:9px 10px; border-radius:10px; cursor:pointer;
+  border:1px solid transparent; background:none; width:100%; text-align:left; font-family:inherit;
+}
+.athlete-card:hover{background:var(--surface-2);}
+.athlete-card.active{background:var(--surface-2); border-color:var(--border);}
+.avatar{
+  width:38px; height:38px; border-radius:50%; flex:0 0 auto; display:flex; align-items:center; justify-content:center;
+  font-family:"Oswald",sans-serif; font-weight:700; font-size:13.5px; color:#fff; border:2.5px solid var(--ring);
+  background:var(--ink);
+}
+.ac-name{font-weight:700; font-size:13.5px; color:var(--ink);}
+.ac-meta{font-size:11.5px; color:var(--ink-muted);}
+.detail-head{display:flex; flex-wrap:wrap; gap:18px; justify-content:space-between; align-items:flex-start; padding:20px 22px 6px;}
+.detail-name{font-size:24px; font-weight:700;}
+.detail-tags{display:flex; gap:8px; flex-wrap:wrap; margin-top:6px;}
+.tag{font-size:11.5px; font-weight:700; padding:3px 9px; border-radius:999px; background:var(--surface-3); color:var(--ink-2);}
+.detail-facts{display:flex; gap:22px; flex-wrap:wrap;}
+.fact .v{font-family:"Oswald",sans-serif; font-size:19px; font-weight:700; font-variant-numeric:tabular-nums;}
+.fact .l{font-size:11px; text-transform:uppercase; letter-spacing:.05em; color:var(--ink-muted); font-weight:600;}
+.detail-body{display:grid; grid-template-columns:340px 1fr; gap:20px; padding:8px 22px 22px;}
+.radar-box{position:relative; height:300px;}
+.catscore-row{display:flex; align-items:center; gap:10px; padding:7px 0; border-bottom:1px solid var(--border);}
+.catscore-row:last-child{border-bottom:none;}
+.catscore-row .cn{width:76px; flex:0 0 auto; font-size:12.5px; font-weight:700; display:flex; align-items:center; gap:6px;}
+.catscore-row .track{flex:1; height:8px; border-radius:5px; background:var(--surface-3);}
+.catscore-row .fill{height:100%; border-radius:5px;}
+.catscore-row .pct{width:34px; text-align:right; font-size:12px; font-variant-numeric:tabular-nums; color:var(--ink-2); font-weight:700;}
+.pace-pill{font-size:10.5px; font-weight:700; padding:2px 7px; border-radius:999px; white-space:nowrap;}
+.pace-pill.good{background:rgba(12,163,12,.14); color:var(--status-good);}
+.pace-pill.warn{background:rgba(201,133,0,.16); color:var(--status-warn);}
+.pace-pill.crit{background:rgba(208,59,59,.14); color:var(--status-crit);}
+.trend-grid{display:grid; grid-template-columns:repeat(auto-fit,minmax(210px,1fr)); gap:12px; margin-top:16px;}
+.trend-card{padding:12px 14px;}
+.trend-card .th{display:flex; justify-content:space-between; align-items:baseline; margin-bottom:4px;}
+.trend-card .tname{font-size:12.5px; font-weight:700; display:flex; align-items:center; gap:6px;}
+.trend-card .tval{font-size:13px; font-weight:700; font-variant-numeric:tabular-nums;}
+.trend-card .tdelta{font-size:11px; color:var(--ink-muted); margin-top:2px;}
+.trend-canvas-wrap{height:70px; margin-top:4px;}
+.methodology{margin-top:26px; font-size:12px; color:var(--ink-muted); line-height:1.6; padding:16px 20px;}
+.methodology b{color:var(--ink-2);}
+@media (max-width:860px){
+  .stat-row{grid-template-columns:repeat(2,1fr);}
+  .ov-cols{grid-template-columns:1fr;}
+  .profiles-layout{grid-template-columns:1fr;}
+  .athlete-grid{max-height:340px;}
+  .detail-body{grid-template-columns:1fr;}
+  .detail-facts{gap:16px;}
+}
+</style>
+
+<div class="wrap">
+  <header class="topbar">
+    <svg class="crest" viewBox="0 0 120 150" role="img" aria-label="Squad crest">
+      <defs>
+        <clipPath id="shieldClip">
+          <path d="M60 4 C78 4 96 10 110 18 L110 60 C110 100 88 122 60 146 C32 122 10 100 10 60 L10 18 C24 10 42 4 60 4 Z"/>
+        </clipPath>
+      </defs>
+      <g clip-path="url(#shieldClip)">
+        <rect x="10" y="0" width="20" height="150" fill="#F29222"/>
+        <rect x="30" y="0" width="20" height="150" fill="#BA171F"/>
+        <rect x="50" y="0" width="20" height="150" fill="#2A2F6D"/>
+        <rect x="70" y="0" width="20" height="150" fill="#0A71B7"/>
+        <rect x="90" y="0" width="20" height="150" fill="#46AE4D"/>
+      </g>
+      <path d="M60 4 C78 4 96 10 110 18 L110 60 C110 100 88 122 60 146 C32 122 10 100 10 60 L10 18 C24 10 42 4 60 4 Z" fill="none" stroke="#ffffff" stroke-width="2.5"/>
+      <circle cx="60" cy="66" r="27" fill="#2A2F6D" stroke="#F29222" stroke-width="4"/>
+      <text x="60" y="73" text-anchor="middle" font-family="Oswald,sans-serif" font-weight="700" font-size="20" fill="#ffffff">S:M</text>
+    </svg>
+    <div class="brand">
+      <div class="eyebrow">Squad Performance</div>
+      <h1>Testing Hub</h1>
+    </div>
+    <div class="headchips" id="headchips"></div>
+  </header>
+
+  <nav class="tabs" role="tablist" aria-label="Dashboard sections">
+    <button class="tab-btn" role="tab" id="tabbtn-overview" aria-controls="panel-overview" aria-selected="true">Overview</button>
+    <button class="tab-btn" role="tab" id="tabbtn-league" aria-controls="panel-league" aria-selected="false">League Tables</button>
+    <button class="tab-btn" role="tab" id="tabbtn-profiles" aria-controls="panel-profiles" aria-selected="false">Athlete Profiles</button>
+  </nav>
+
+  <main>
+    <section id="panel-overview" role="tabpanel" aria-labelledby="tabbtn-overview">
+      <div class="stat-row" id="statRow"></div>
+      <div class="ov-cols">
+        <div class="card pad">
+          <h2 class="section-title">Athletic identity mix</h2>
+          <p class="section-sub">Squad-wide, from most to least common</p>
+          <div id="identityBars"></div>
+        </div>
+        <div class="card pad">
+          <h2 class="section-title">Category leaders</h2>
+          <p class="section-sub">Best percentile in each category at the most recent test, by gender</p>
+          <div class="leader-grid" id="leaderGrid"></div>
+        </div>
+      </div>
+      <div class="card pad">
+        <h2 class="section-title">Squad progress over time</h2>
+        <p class="section-sub">Average result per test session, girls vs boys</p>
+        <div class="control-row">
+          <div class="metric-chips" id="ovMetricChips"></div>
+        </div>
+        <div style="height:300px;"><canvas id="ovTrendChart"></canvas></div>
+      </div>
+    </section>
+
+    <section id="panel-league" role="tabpanel" aria-labelledby="tabbtn-league" hidden>
+      <div class="control-row">
+        <div class="metric-chips" id="lgMetricChips"></div>
+        <span style="flex:1 1 auto"></span>
+        <div class="segmented" id="lgGenderSeg">
+          <button data-v="all" aria-pressed="true">All</button>
+          <button data-v="Girl" aria-pressed="false">Girls</button>
+          <button data-v="Boy" aria-pressed="false">Boys</button>
+        </div>
+      </div>
+      <div class="table-wrap">
+        <table>
+          <thead>
+            <tr>
+              <th>Rank</th><th>Athlete</th><th>Age</th><th id="lgValueHead">Value</th>
+              <th>Since first test</th><th>5-year trend</th>
+            </tr>
+          </thead>
+          <tbody id="lgTbody"></tbody>
+        </table>
+      </div>
+    </section>
+
+    <section id="panel-profiles" role="tabpanel" aria-labelledby="tabbtn-profiles" hidden>
+      <div class="profiles-layout">
+        <div class="card athlete-list">
+          <div style="padding:14px 14px 8px; display:flex; flex-direction:column; gap:8px;">
+            <input class="search-input" id="athSearch" type="text" placeholder="Search by name…" aria-label="Search athletes by name">
+            <div class="segmented" id="prGenderSeg">
+              <button data-v="all" aria-pressed="true">All</button>
+              <button data-v="Girl" aria-pressed="false">Girls</button>
+              <button data-v="Boy" aria-pressed="false">Boys</button>
+            </div>
+          </div>
+          <div class="athlete-grid" id="athleteGrid"></div>
+        </div>
+        <div class="card" id="detailPanel"></div>
+      </div>
+    </section>
+
+    <div class="card methodology">
+      <b>How the numbers are calculated.</b> Percentiles rank each athlete against the squad shown (or their own gender in profiles and category scores) at their most recent test. Category scores average the percentiles of the tests that make up Speed (10m Sprint, 30m Fly), Strength (TB Deadlift Power), Bounce (CMJ, Single-Leg CMJ, Broad Jump), Agility (Raducanu Lateral Agility) and Crawl (Pentagon Crawl Ratio). Pace pills compare each athlete's tracked development rate for that category against their squad.
+    </div>
+  </main>
+</div>
+
+<script>
+(async function(){
+  const res = await fetch('data.json');
+  const DATA = await res.json();
+
+  const fmtDate = d => { const dt = new Date(d+'T00:00:00'); return dt.toLocaleDateString('en-GB',{month:'short',year:'2-digit'}); };
+  const cv = name => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+  const catColorVar = cat => ({speed:'--cat-speed',strength:'--cat-strength',bounce:'--cat-bounce',agility:'--cat-agility',crawl:'--cat-crawl'})[cat];
+  const catColor = cat => cv(catColorVar(cat));
+  const fmtVal = (metric, v) => {
+    const m = DATA.metricMeta[metric];
+    if (v === null || v === undefined) return '—';
+    return v.toFixed(m.decimals) + (m.unit ? ' ' + m.unit : '');
+  };
+  const initials = name => name.split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase();
+  const topCategory = a => DATA.categoryOrder.reduce((best,c)=> a.categoryScores[c] > a.categoryScores[best] ? c : best, DATA.categoryOrder[0]);
+
+  // ---------------- tabs ----------------
+  const tabs = ['overview','league','profiles'];
+  let chartsInited = {overview:false, league:false, profiles:false};
+  function selectTab(name){
+    tabs.forEach(t=>{
+      document.getElementById('panel-'+t).hidden = t!==name;
+      document.getElementById('tabbtn-'+t).setAttribute('aria-selected', t===name);
+    });
+    if(name==='overview' && !chartsInited.overview){ initOverview(); chartsInited.overview = true; }
+    if(name==='league' && !chartsInited.league){ initLeague(); chartsInited.league = true; }
+    if(name==='profiles' && !chartsInited.profiles){ initProfiles(); chartsInited.profiles = true; }
+  }
+  tabs.forEach(t=> document.getElementById('tabbtn-'+t).addEventListener('click', ()=>selectTab(t)));
+
+  // ---------------- header chips ----------------
+  const yrs = (new Date(DATA.squad.testDates[DATA.squad.testDates.length-1]) - new Date(DATA.squad.testDates[0])) / (365.25*24*3600*1000);
+  document.getElementById('headchips').innerHTML = `
+    <span class="chip"><b>${DATA.squad.total}</b> athletes</span>
+    <span class="chip"><b>${DATA.squad.girls}</b> girls · <b>${DATA.squad.boys}</b> boys</span>
+    <span class="chip"><b>${DATA.squad.testDates.length}</b> test sessions</span>
+    <span class="chip">tracked <b>${yrs.toFixed(1)} yrs</b></span>`;
+
+  // ================= OVERVIEW =================
+  let ovChart = null;
+  function renderStatTiles(){
+    const tiles = [
+      [DATA.squad.total,'Athletes'],
+      [DATA.squad.girls,'Girls'],
+      [DATA.squad.boys,'Boys'],
+      [DATA.squad.testDates.length,'Test sessions'],
+      [yrs.toFixed(1),'Years tracked'],
+    ];
+    document.getElementById('statRow').innerHTML = tiles.map(([v,l])=>
+      `<div class="card stat-tile"><div class="v">${v}</div><div class="l">${l}</div></div>`).join('');
+  }
+  function renderIdentityBars(){
+    const entries = Object.entries(DATA.squad.identities).sort((a,b)=>b[1]-a[1]);
+    const max = Math.max(...entries.map(e=>e[1]));
+    document.getElementById('identityBars').innerHTML = entries.map(([name,n])=>`
+      <div class="identity-row">
+        <div class="name">${name}</div>
+        <div class="track"><div class="fill" style="width:${(n/max*100).toFixed(0)}%"></div></div>
+        <div class="n">${n}</div>
+      </div>`).join('');
+  }
+  function renderLeaders(){
+    document.getElementById('leaderGrid').innerHTML = DATA.categoryOrder.map(cat=>{
+      const label = DATA.categoryMeta[cat].label;
+      const bySex = sex => DATA.athletes.filter(a=>a.sex===sex).reduce((best,a)=> !best || a.categoryScores[cat]>best.categoryScores[cat] ? a : best, null);
+      const g = bySex('Girl'), b = bySex('Boy');
+      return `<div class="leader-card" style="--cat:${catColor(cat)}">
+        <div class="cat-name"><span class="dot"></span>${label}</div>
+        <div class="leader-line"><span class="who">${g?g.name:'—'}</span><span class="pct">${g?g.categoryScores[cat].toFixed(0)+'th pct · girls':''}</span></div>
+        <div class="leader-line"><span class="who">${b?b.name:'—'}</span><span class="pct">${b?b.categoryScores[cat].toFixed(0)+'th pct · boys':''}</span></div>
+      </div>`;
+    }).join('');
+  }
+  let ovMetric = 'cmj';
+  function renderOvChips(){
+    document.getElementById('ovMetricChips').innerHTML = Object.keys(DATA.metricMeta).map(m=>{
+      const meta = DATA.metricMeta[m];
+      return `<button class="metric-chip" data-m="${m}" aria-pressed="${m===ovMetric}" style="--cat:${catColor(meta.category)}"><span class="dot" style="background:${catColor(meta.category)}"></span>${meta.label}</button>`;
+    }).join('');
+    document.querySelectorAll('#ovMetricChips .metric-chip').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ ovMetric = btn.dataset.m; renderOvChips(); drawOvChart(); });
+    });
+  }
+  function drawOvChart(){
+    const meta = DATA.metricMeta[ovMetric];
+    const labels = DATA.squad.testDates.map(fmtDate);
+    const girls = DATA.trends[ovMetric].Girl;
+    const boys = DATA.trends[ovMetric].Boy;
+    if(ovChart) ovChart.destroy();
+    ovChart = new Chart(document.getElementById('ovTrendChart'), {
+      type:'line',
+      data:{ labels, datasets:[
+        { label:'Girls avg', data:girls, borderColor:cv('--girls-line'), backgroundColor:cv('--girls-line'), pointRadius:0, borderWidth:2.5, tension:.25 },
+        { label:'Boys avg', data:boys, borderColor:cv('--boys-line'), backgroundColor:cv('--boys-line'), pointRadius:0, borderWidth:2.5, borderDash:[6,4], tension:.25 },
+      ]},
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:'index', intersect:false},
+        plugins:{
+          legend:{ position:'top', align:'end', labels:{ color:cv('--ink-2'), boxWidth:14, boxHeight:2, font:{family:'Public Sans', size:12, weight:'600'} } },
+          tooltip:{ backgroundColor:cv('--surface'), titleColor:cv('--ink'), bodyColor:cv('--ink-2'), borderColor:cv('--border'), borderWidth:1,
+            callbacks:{ label:(ctx)=> `${ctx.dataset.label}: ${fmtVal(ovMetric, ctx.parsed.y)}` } }
+        },
+        scales:{
+          x:{ ticks:{ color:cv('--ink-muted'), maxRotation:0, autoSkip:true, font:{size:11} }, grid:{ display:false } },
+          y:{ ticks:{ color:cv('--ink-muted'), font:{size:11} }, grid:{ color:cv('--border') }, title:{ display:true, text:meta.unit||'', color:cv('--ink-muted') } }
+        }
+      }
+    });
+  }
+  function initOverview(){
+    renderStatTiles(); renderIdentityBars(); renderLeaders(); renderOvChips(); drawOvChart();
+  }
+
+  // ================= LEAGUE TABLES =================
+  let lgMetric = 'sprint10';
+  let lgGender = 'all';
+  function renderLgChips(){
+    document.getElementById('lgMetricChips').innerHTML = Object.keys(DATA.metricMeta).map(m=>{
+      const meta = DATA.metricMeta[m];
+      return `<button class="metric-chip" data-m="${m}" aria-pressed="${m===lgMetric}"><span class="dot" style="background:${catColor(meta.category)}"></span>${meta.label}</button>`;
+    }).join('');
+    document.querySelectorAll('#lgMetricChips .metric-chip').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ lgMetric = btn.dataset.m; renderLgChips(); renderLgTable(); });
+    });
+  }
+  document.querySelectorAll('#lgGenderSeg button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('#lgGenderSeg button').forEach(b=>b.setAttribute('aria-pressed', b===btn));
+      lgGender = btn.dataset.v; renderLgTable();
+    });
+  });
+  function sparkPath(values, lowerBetter){
+    const w=64,h=24,pad=3;
+    const finite = values.filter(v=>v!=null);
+    const min=Math.min(...finite), max=Math.max(...finite);
+    const span = (max-min)||1;
+    const pts = values.map((v,i)=>{
+      const x = pad + (i/(values.length-1))*(w-2*pad);
+      const y = pad + (1-(v-min)/span)*(h-2*pad);
+      return [x,y];
+    });
+    const d = pts.map((p,i)=> (i===0?'M':'L')+p[0].toFixed(1)+' '+p[1].toFixed(1)).join(' ');
+    const last = pts[pts.length-1];
+    return `<svg width="${w}" height="${h}" viewBox="0 0 ${w} ${h}"><path d="${d}" fill="none" stroke="${cv('--chart-line')}" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"/><circle cx="${last[0]}" cy="${last[1]}" r="2.4" fill="${cv('--chart-line')}"/></svg>`;
+  }
+  function renderLgTable(){
+    const meta = DATA.metricMeta[lgMetric];
+    document.getElementById('lgValueHead').textContent = meta.label + (meta.unit ? ' ('+meta.unit+')' : '');
+    const entries = DATA.league[lgMetric][lgGender];
+    const n = entries.length;
+    const rankClass = r => r===1?'g':r===2?'s':r===3?'b':'';
+    document.getElementById('lgTbody').innerHTML = entries.map(e=>{
+      const pct = n>1 ? Math.round(100*(n-e.rank)/(n-1)) : 100;
+      const athlete = DATA.athletes.find(a=>a.id===e.id);
+      const spark = sparkPath(athlete.series.map(s=>s[lgMetric]));
+      const deltaSign = e.delta>0?'+':'';
+      return `<tr>
+        <td><span class="rank-pill ${rankClass(e.rank)}">${e.rank}</span></td>
+        <td class="namecell"><span class="sexdot ${e.sex}"></span>${e.name}</td>
+        <td>${e.age.toFixed(1)}</td>
+        <td class="pctbar-cell">
+          <div class="pctbar-track"></div><div class="pctbar-fill" style="width:${pct}%"></div>
+          <span class="valcell">${fmtVal(lgMetric, e.value)}</span>
+        </td>
+        <td class="delta-cell ${e.improved?'good':'crit'}">${deltaSign}${e.delta.toFixed(2)}${meta.unit?(' '+meta.unit):''} ${e.improved?'▲':'▼'}</td>
+        <td class="spark-cell">${spark}</td>
+      </tr>`;
+    }).join('');
+  }
+  function initLeague(){ renderLgChips(); renderLgTable(); }
+
+  // ================= ATHLETE PROFILES =================
+  let prGender = 'all';
+  let prSearch = '';
+  let selectedId = DATA.athletes[0].id;
+  const trendCharts = [];
+
+  function filteredAthletes(){
+    return DATA.athletes.filter(a =>
+      (prGender==='all' || a.sex===prGender) &&
+      a.name.toLowerCase().includes(prSearch.toLowerCase())
+    );
+  }
+  function renderAthleteGrid(){
+    const list = filteredAthletes();
+    document.getElementById('athleteGrid').innerHTML = list.map(a=>{
+      const cat = topCategory(a);
+      return `<button class="athlete-card ${a.id===selectedId?'active':''}" data-id="${a.id}">
+        <div class="avatar" style="--ring:${catColor(cat)}">${initials(a.name)}</div>
+        <div>
+          <div class="ac-name">${a.name}</div>
+          <div class="ac-meta">${a.identity} · age ${a.latest.age.toFixed(1)}</div>
+        </div>
+      </button>`;
+    }).join('') || `<p style="padding:14px; color:var(--ink-muted); font-size:13px;">No athletes match that search.</p>`;
+    document.querySelectorAll('.athlete-card').forEach(btn=>{
+      btn.addEventListener('click', ()=>{ selectedId = btn.dataset.id; renderAthleteGrid(); renderDetail(); });
+    });
+  }
+  document.getElementById('athSearch').addEventListener('input', e=>{ prSearch = e.target.value; renderAthleteGrid(); });
+  document.querySelectorAll('#prGenderSeg button').forEach(btn=>{
+    btn.addEventListener('click', ()=>{
+      document.querySelectorAll('#prGenderSeg button').forEach(b=>b.setAttribute('aria-pressed', b===btn));
+      prGender = btn.dataset.v; renderAthleteGrid();
+    });
+  });
+
+  function paceFor(a, cat){
+    const rate = a.dev[cat];
+    if(rate >= 1.05) return {cls:'good', label:'Ahead of pace'};
+    if(rate <= 0.9) return {cls:'crit', label:'Building steadily'};
+    return {cls:'warn', label:'On pace'};
+  }
+
+  let radarChart = null;
+  function renderDetail(){
+    const a = DATA.athletes.find(x=>x.id===selectedId);
+    const peers = DATA.athletes.filter(p=>p.sex===a.sex);
+    const peerAvg = cat => peers.reduce((s,p)=>s+p.categoryScores[cat],0)/peers.length;
+    const firstDate = a.series[0].date;
+
+    const panel = document.getElementById('detailPanel');
+    panel.innerHTML = `
+      <div class="detail-head">
+        <div>
+          <div class="detail-name">${a.name}</div>
+          <div class="detail-tags">
+            <span class="tag">${a.sex}</span>
+            <span class="tag">${a.identity}</span>
+          </div>
+        </div>
+        <div class="detail-facts">
+          <div class="fact"><div class="v">${a.latest.age.toFixed(1)}</div><div class="l">Age now</div></div>
+          <div class="fact"><div class="v">${a.latest.height.toFixed(0)} cm</div><div class="l">Height now</div></div>
+          <div class="fact"><div class="v">${fmtDate(firstDate)}</div><div class="l">Tracking since</div></div>
+        </div>
+      </div>
+      <div class="detail-body">
+        <div>
+          <div class="radar-box"><canvas id="radarCanvas"></canvas></div>
+          <div id="catScores"></div>
+        </div>
+        <div>
+          <h3 class="section-title" style="font-size:15px;">Test history by category</h3>
+          <div class="trend-grid" id="trendGrid"></div>
+        </div>
+      </div>`;
+
+    document.getElementById('catScores').innerHTML = DATA.categoryOrder.map(cat=>{
+      const score = a.categoryScores[cat];
+      const pace = paceFor(a, cat);
+      return `<div class="catscore-row">
+        <div class="cn"><span class="dot" style="background:${catColor(cat)}"></span>${DATA.categoryMeta[cat].label}</div>
+        <div class="track"><div class="fill" style="width:${score}%; background:${catColor(cat)}"></div></div>
+        <div class="pct">${score.toFixed(0)}</div>
+        <span class="pace-pill ${pace.cls}">${pace.label}</span>
+      </div>`;
+    }).join('');
+
+    if(radarChart) radarChart.destroy();
+    radarChart = new Chart(document.getElementById('radarCanvas'), {
+      type:'radar',
+      data:{
+        labels: DATA.categoryOrder.map(c=>DATA.categoryMeta[c].label),
+        datasets:[
+          { label:a.name, data:DATA.categoryOrder.map(c=>a.categoryScores[c]),
+            borderColor:cv('--chart-line'), backgroundColor:cv('--chart-line')+'33', pointBackgroundColor:cv('--chart-line'), borderWidth:2.5, pointRadius:3 },
+          { label:`${a.sex==='Girl'?'Girls':'Boys'} squad avg`, data:DATA.categoryOrder.map(c=>peerAvg(c)),
+            borderColor:cv('--chart-avg'), backgroundColor:'transparent', borderDash:[4,4], pointRadius:0, borderWidth:1.75 },
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{ legend:{ position:'bottom', labels:{ color:cv('--ink-2'), boxWidth:12, boxHeight:12, padding:14, font:{family:'Public Sans', size:11.5, weight:'600'} } },
+          tooltip:{ backgroundColor:cv('--surface'), titleColor:cv('--ink'), bodyColor:cv('--ink-2'), borderColor:cv('--border'), borderWidth:1,
+            callbacks:{ label:(ctx)=> `${ctx.dataset.label}: ${ctx.parsed.r.toFixed(0)}th pct` } } },
+        scales:{ r:{ min:0, max:100, ticks:{ display:false, stepSize:25 }, grid:{ color:cv('--border') }, angleLines:{ color:cv('--border') },
+          pointLabels:{ color:cv('--ink-2'), font:{family:'Oswald', size:12, weight:'600'} } } }
+      }
+    });
+
+    trendCharts.forEach(c=>c.destroy()); trendCharts.length = 0;
+    document.getElementById('trendGrid').innerHTML = Object.keys(DATA.metricMeta).map(m=>{
+      const meta = DATA.metricMeta[m];
+      const first = a.series[0][m], last = a.latest[m];
+      const delta = last - first;
+      const lower = DATA.lowerBetter.includes(m);
+      const improved = lower ? delta < 0 : delta > 0;
+      return `<div class="card trend-card">
+        <div class="th">
+          <span class="tname"><span class="dot" style="background:${catColor(meta.category)}"></span>${meta.label}</span>
+          <span class="tval">${fmtVal(m,last)}</span>
+        </div>
+        <div class="trend-canvas-wrap"><canvas id="tc-${m}"></canvas></div>
+        <div class="tdelta" style="color:${improved?cv('--status-good'):cv('--status-crit')}">${delta>0?'+':''}${delta.toFixed(2)}${meta.unit?(' '+meta.unit):''} since ${fmtDate(a.series[0].date)}</div>
+      </div>`;
+    }).join('');
+
+    Object.keys(DATA.metricMeta).forEach(m=>{
+      const meta = DATA.metricMeta[m];
+      const color = catColor(meta.category);
+      const ch = new Chart(document.getElementById('tc-'+m), {
+        type:'line',
+        data:{ labels:a.series.map(s=>fmtDate(s.date)), datasets:[{
+          data:a.series.map(s=>s[m]), borderColor:color, backgroundColor:color+'22', fill:true,
+          borderWidth:2, pointRadius:(ctx)=> ctx.dataIndex===a.series.length-1?3:0, pointBackgroundColor:color, tension:.3
+        }]},
+        options:{
+          responsive:true, maintainAspectRatio:false,
+          plugins:{ legend:{display:false}, tooltip:{ backgroundColor:cv('--surface'), titleColor:cv('--ink'), bodyColor:cv('--ink-2'), borderColor:cv('--border'), borderWidth:1,
+            callbacks:{ label:(ctx)=>fmtVal(m, ctx.parsed.y) } } },
+          scales:{ x:{ display:false }, y:{ display:false } }
+        }
+      });
+      trendCharts.push(ch);
+    });
+  }
+  function initProfiles(){ renderAthleteGrid(); renderDetail(); }
+
+  // ---------------- theme change: rebuild visible charts ----------------
+  function rerender(){
+    if(chartsInited.overview) drawOvChart();
+    if(chartsInited.profiles && !document.getElementById('panel-profiles').hidden) renderDetail();
+  }
+  window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', rerender);
+  new MutationObserver(rerender).observe(document.documentElement, {attributes:true, attributeFilter:['data-theme']});
+
+  selectTab('overview');
+})();
+</script>
+
+</body>
+</html>
