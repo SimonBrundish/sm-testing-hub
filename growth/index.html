@@ -208,6 +208,8 @@ section.grid, div.grid { display: grid; }
 .account { display: flex; gap: 10px; align-items: center; padding-bottom: 8px; }
 .account:empty { display: none; }
 </style>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
+<script>window.GM_CONFIG = {"supabaseUrl": "https://msnazqefuanyodfzxlwl.supabase.co", "supabaseKey": "sb_publishable_gm7W42jArEcU-yJF_4C4fQ_X7kopcbF"};</script>
 </head>
 <body>
 <header class="top"><div class="stripe" aria-hidden="true"></div><div class="top-inner">
@@ -703,26 +705,33 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     }
     const sb = store.sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey);
     store.mode = 'supa';
+    // Tables are prefixed so they can share a Supabase project with other apps.
+    store.t = { players: cfg.playersTable || 'gm_players', settings: cfg.settingsTable || 'gm_settings', coaches: cfg.coachesTable || 'gm_coaches' };
     sb.auth.onAuthStateChange((event, session) => {
       if (event === 'PASSWORD_RECOVERY') S.recovery = true;
       const was = store.user && store.user.id;
       store.user = session ? session.user : null;
       if (store.user && store.user.id !== was) loadSupabase();
-      if (!store.user) { S.players = []; S.loaded = false; if (store.channel) { sb.removeChannel(store.channel); store.channel = null; } render(); }
+      if (!store.user) { S.players = []; S.loaded = false; S.notCoach = false; if (store.channel) { sb.removeChannel(store.channel); store.channel = null; } render(); }
     });
     const { data } = await sb.auth.getSession();
     store.user = data && data.session ? data.session.user : null;
     if (store.user) await loadSupabase(); else render();
   }
   async function loadSupabase() {
-    const sb = store.sb;
-    const [pl, st] = await Promise.all([sb.from('players').select('id,data'), sb.from('settings').select('data').eq('id', 'settings').maybeSingle()]);
+    const sb = store.sb, t = store.t;
+    // Signed in is not enough: the account must also be on the coach list.
+    const me = await sb.from(t.coaches).select('email').limit(1);
+    S.notCoach = !me.error && !(me.data && me.data.length);
+    if (me.error) store.error = 'Your coach access could not be checked: ' + me.error.message;
+    if (S.notCoach) { S.players = []; S.loaded = true; render(); return; }
+    const [pl, st] = await Promise.all([sb.from(t.players).select('id,data'), sb.from(t.settings).select('data').eq('id', 'settings').maybeSingle()]);
     if (pl.error) store.error = 'Players could not be loaded: ' + pl.error.message;
     else S.players = pl.data.map(r => ({ ...r.data, id: r.id, assessments: ((r.data && r.data.assessments) || []).slice() }));
     if (st && st.data && st.data.data) S.settings = { ...G.DEFAULT_SETTINGS, ...st.data.data };
     S.loaded = true; invalidate(); renderSoft();
     if (!store.channel) {
-      store.channel = sb.channel('gm-players').on('postgres_changes', { event: '*', schema: 'public', table: 'players' }, ev => {
+      store.channel = sb.channel('gm-players').on('postgres_changes', { event: '*', schema: 'public', table: t.players }, ev => {
         if (ev.eventType === 'DELETE') S.players = S.players.filter(p => p.id !== (ev.old && ev.old.id));
         else if (ev.new && ev.new.id) {
           const np = { ...ev.new.data, id: ev.new.id, assessments: ((ev.new.data && ev.new.data.assessments) || []).slice() };
@@ -734,11 +743,14 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     }
   }
   async function supaWrite(changed, removed) {
-    const sb = store.sb, now = new Date().toISOString();
-    if (changed.length) { const { error } = await sb.from('players').upsert(changed.map(p => ({ id: p.id, data: cleanPlayer(p), updated_at: now }))); if (error) throw { supa: error }; }
-    if (removed.length) { const { error } = await sb.from('players').delete().in('id', removed); if (error) throw { supa: error }; }
+    const sb = store.sb, t = store.t, now = new Date().toISOString();
+    if (changed.length) { const { error } = await sb.from(t.players).upsert(changed.map(p => ({ id: p.id, data: cleanPlayer(p), updated_at: now }))); if (error) throw { supa: error }; }
+    if (removed.length) { const { error } = await sb.from(t.players).delete().in('id', removed); if (error) throw { supa: error }; }
   }
   function viewLogin() {
+    if (store.user && S.notCoach) return `<section class="panel" style="max-width:420px;margin:24px auto;width:100%"><h2>Not on the coach list</h2>
+      <p class="sub" style="margin-top:4px">You are signed in as ${esc(store.user.email || '')}, but this account has not been given access to player data. Ask the academy to add you as a coach.</p>
+      <button class="btn" id="sign-out" style="margin-top:14px">Sign out</button></section>`;
     if (S.recovery) return `<section class="panel" style="max-width:420px;margin:24px auto;width:100%"><h2>Choose a new password</h2>
       <form id="newpw" style="display:grid;gap:12px;margin-top:14px"><label class="field"><span>New password</span><input type="password" id="np-pw" minlength="8" autocomplete="new-password" required></label>
       <button class="btn primary" type="submit">Save password</button><p class="err" role="status">${esc(S.msg.login || '')}</p></form></section>`;
@@ -775,7 +787,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
   }
   async function persistSettings() {
     invalidate(); render();
-    if (store.mode === 'supa') { const { error } = await store.sb.from('settings').upsert({ id: 'settings', data: { ...S.settings }, updated_at: new Date().toISOString() }); if (error) storeError({ supa: error }); return; }
+    if (store.mode === 'supa') { const { error } = await store.sb.from(store.t.settings).upsert({ id: 'settings', data: { ...S.settings }, updated_at: new Date().toISOString() }); if (error) storeError({ supa: error }); return; }
     if (store.mode !== 'db') { saveLocal(); return; }
     try { await store.db.doc('config/settings').set({ ...S.settings }); } catch (e) { storeError(e); }
   }
@@ -1392,7 +1404,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       (examples ? `<div class="banner"><span><b>Example squad.</b> ${examples} made-up players are here so you can see the dashboard working. Remove them before importing your own data.</span><button class="btn small" id="rm-examples-top">Remove examples</button></div>` : '');
     const acc = $('#account');
     if (acc) acc.innerHTML = store.mode === 'supa' && store.user ? `<span class="sub">${esc(store.user.email || 'Signed in')}</span><button class="linkish" id="sign-out">Sign out</button>` : '';
-    if (store.mode === 'supa' && (!store.user || S.recovery) && S.tab !== 'calculator' && S.tab !== 'method') { $('#view').innerHTML = viewLogin(); return; }
+    if (store.mode === 'supa' && (!store.user || S.recovery || S.notCoach) && S.tab !== 'calculator' && S.tab !== 'method') { $('#view').innerHTML = viewLogin(); return; }
     const loading = store.mode === 'starting' || ((store.mode === 'db' || store.mode === 'supa') && !S.loaded);
     if (loading && S.tab !== 'calculator' && S.tab !== 'method') { $('#view').innerHTML = `<div class="panel"><h3>Loading squad data</h3><p class="sub">Fetching players and measurements.</p></div>`; return; }
     const v = { squad: viewSquad, player: viewPlayer, record: viewRecord, calculator: viewCalculator, data: viewData, method: viewMethod }[S.tab];
