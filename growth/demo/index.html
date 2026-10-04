@@ -206,6 +206,10 @@ section.grid, div.grid { display: grid; }
 
 .account { display: flex; gap: 10px; align-items: center; padding-bottom: 8px; }
 .account:empty { display: none; }
+
+.pcell { white-space: nowrap; }
+.pbar { display: inline-block; width: 64px; height: 8px; border-radius: 4px; background: var(--surface-2); vertical-align: middle; margin-right: 6px; overflow: hidden; }
+.pbar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
 </style>
 </head>
 <body>
@@ -214,6 +218,7 @@ section.grid, div.grid { display: grid; }
   <nav class="tabs" role="tablist" aria-label="Views">
     <button class="tab" role="tab" data-tab="squad">Squad</button>
     <button class="tab" role="tab" data-tab="player">Player</button>
+    <button class="tab" role="tab" data-tab="perf">Performance</button>
     <button class="tab" role="tab" data-tab="record">Record</button>
     <button class="tab" role="tab" data-tab="data">Data</button>
     <button class="tab" role="tab" data-tab="calculator">Calculator</button>
@@ -418,6 +423,79 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     return p;
   }
 
+
+  // ---- Performance testing (Testing Hub metrics) normed by age and by maturity ----
+  const METRICS = [
+    { key: 'sprint10', label: '10m sprint', unit: 's', d: 2, cat: 'Speed', lower: true },
+    { key: 'fly30', label: '30m fly', unit: 's', d: 2, cat: 'Speed', lower: true },
+    { key: 'cmj', label: 'CMJ', unit: 'cm', d: 1, cat: 'Bounce' },
+    { key: 'slcmj', label: 'Single-leg CMJ', unit: 'cm', d: 1, cat: 'Bounce' },
+    { key: 'broadJump', label: 'Broad jump', unit: 'cm', d: 0, cat: 'Bounce' },
+    { key: 'deadliftPower', label: 'TB deadlift power', unit: 'W', d: 0, cat: 'Strength' },
+    { key: 'agility', label: 'Raducanu lateral agility', unit: 's', d: 2, cat: 'Agility', lower: true },
+    { key: 'pentagonRatio', label: 'Pentagon crawl ratio', unit: '', d: 2, cat: 'Crawl' }
+  ];
+  // Norms come from other players' tests (any date) near the same age: a straight line fitted within ±window years,
+  // widened once if too few, and the score's distance from that line in standard deviations.
+  const NORMS = { window: 1.5, wide: 2.5, minPlayers: 4, minTests: 8, sameSex: true };
+
+  // Height and mass on a test date: the test's own height if recorded, otherwise interpolated
+  // between measurements up to 400 days apart, or the nearest measurement within 60 days.
+  function sizeAt(history, date, testHeight) {
+    const t = parseDate(date); if (!t) return null;
+    const hs = history.filter(a => a.height > 0 && a.mass > 0).map(a => ({ t: parseDate(a.date).getTime(), h: a.height, m: a.mass }));
+    let before = null, after = null;
+    for (const a of hs) { if (a.t <= t && (!before || a.t > before.t)) before = a; if (a.t >= t && (!after || a.t < after.t)) after = a; }
+    let h = null, m = null;
+    if (before && after && after.t - before.t <= 400 * DAY) {
+      const w = after.t === before.t ? 0 : (t - before.t) / (after.t - before.t);
+      h = before.h + w * (after.h - before.h); m = before.m + w * (after.m - before.m);
+    } else {
+      const near = [before, after].filter(Boolean).sort((a, b) => Math.abs(a.t - t) - Math.abs(b.t - t))[0];
+      if (near && Math.abs(near.t - t) <= 60 * DAY) { h = near.h; m = near.m; }
+    }
+    if (testHeight > 0) h = testHeight;
+    return h > 0 && m > 0 ? { height: h, mass: m } : null;
+  }
+
+  // One row per test: chronological age, and maturity estimated for that date.
+  function testRecords(profiles, s = DEFAULT_SETTINGS) {
+    const out = [];
+    for (const p of profiles) {
+      for (const t of p.tests || []) {
+        if (!parseDate(t.date)) continue;
+        const size = sizeAt(p.history || [], t.date, t.height);
+        const m = size ? assess(p, { date: t.date, height: size.height, mass: size.mass }, s) : null;
+        out.push({ pid: p.id, name: p.name, sex: p.sex, squad: p.squad, date: iso(parseDate(t.date)), t: parseDate(t.date).getTime(), ca: decimalAge(p.dob, t.date),
+          ba: m && m.ba != null ? m.ba : null, pct: m ? m.pct : null, statusIdx: m ? m.statusIdx : null, timingIdx: m ? m.timingIdx : null, baDiff: m ? m.baDiff : null, vals: t });
+      }
+    }
+    return out;
+  }
+
+  const normCdf = z => { const t = 1 / (1 + 0.2316419 * Math.abs(z)), d = 0.3989423 * Math.exp(-z * z / 2);
+    const p = d * t * (0.3193815 + t * (-0.3565638 + t * (1.781478 + t * (-1.821256 + t * 1.330274)))); return z > 0 ? 1 - p : p; };
+  // Percentile (100 = best) of rec's metric against what other players score at the same age on `axis`
+  // ('ca' chronological or 'ba' biological age). Leaves the player's own tests out.
+  function percentileAmong(records, rec, metric, axis, opt = NORMS) {
+    const v = rec.vals[metric.key], x = rec[axis];
+    if (typeof v !== 'number' || !isFinite(v) || x == null) return null;
+    const pool = records.filter(r => r.pid !== rec.pid && (!opt.sameSex || r.sex === rec.sex) && r[axis] != null && typeof r.vals[metric.key] === 'number' && isFinite(r.vals[metric.key]));
+    for (const w of [opt.window, opt.wide]) {
+      const pts = pool.filter(r => Math.abs(r[axis] - x) <= w);
+      const players = new Set(pts.map(r => r.pid)).size;
+      if (players < opt.minPlayers || pts.length < opt.minTests) continue;
+      const n = pts.length, mx = pts.reduce((a, r) => a + r[axis], 0) / n, my = pts.reduce((a, r) => a + r.vals[metric.key], 0) / n;
+      let sxy = 0, sxx = 0; for (const r of pts) { sxy += (r[axis] - mx) * (r.vals[metric.key] - my); sxx += (r[axis] - mx) ** 2; }
+      const slope = sxx > 1e-9 ? sxy / sxx : 0, expected = my + slope * (x - mx);
+      const sd = Math.sqrt(pts.reduce((a, r) => a + (r.vals[metric.key] - (my + slope * (r[axis] - mx))) ** 2, 0) / Math.max(1, n - 2));
+      if (!(sd > 0)) continue;
+      const z = (metric.lower ? -1 : 1) * (v - expected) / sd;
+      return { players, tests: n, window: w, expected, sd, z, pct: 100 * normCdf(z) };
+    }
+    return { players: new Set(pool.map(r => r.pid)).size, pct: null };
+  }
+
   // ---- CSV ----
   function parseCSV(text) {
     const rows = []; let row = [], cell = '', q = false;
@@ -443,7 +521,8 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
   const FIELDS = [
     ['name', 'Name (or first name)', true], ['surname', 'Surname', false], ['sex', 'Sex', false], ['dob', 'Date of birth', false],
     ['squad', 'Squad / group', false], ['mother', "Mother's height (cm)", false], ['father', "Father's height (cm)", false],
-    ['date', 'Test date', true], ['height', 'Height (cm)', true], ['mass', 'Body mass (kg)', true]
+    ['date', 'Test date', true], ['height', 'Height (cm)', false], ['mass', 'Body mass (kg)', false],
+    ...METRICS.map(m => [m.key, m.label + (m.unit ? ` (${m.unit})` : ''), false])
   ];
   const HEADER_ALIASES = {
     name: ['name', 'athlete', 'player', 'child', 'child name', 'name of child', 'kid', 'name of kid', 'player full name', 'full name', 'player name', 'athlete name', 'first name', 'firstname', 'forename', 'given name'],
@@ -455,7 +534,15 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     father: ['father_height_cm', 'father height', "father's height", 'fathers height', 'fathers height (cm)', "father's height (cm)", 'father', 'dad height', 'father height (cm)'],
     date: ['date', 'test date', 'testing date', 'assessment date', 'test_date', 'last assessment', 'measurement date', 'date of test'],
     height: ['height_cm', 'height', 'hieght', 'heigth', 'height cm', 'standing height (cm)', 'standing height', 'height (cm)', 'stature', 'stature (cm)'],
-    mass: ['mass_kg', 'mass', 'weight kg', 'wieght', 'weight_kg', 'body mass (kg)', 'body mass', 'weight', 'weight (kg)', 'body weight', 'body weight (kg)', 'mass (kg)']
+    mass: ['mass_kg', 'mass', 'weight kg', 'wieght', 'weight_kg', 'body mass (kg)', 'body mass', 'weight', 'weight (kg)', 'body weight', 'body weight (kg)', 'mass (kg)'],
+    sprint10: ['sprint10', '10m sprint', '10 m sprint', '10m', 'sprint 10', 'sprint 10m', '10m sprint (s)', '10m sprint time'],
+    fly30: ['fly30', '30m fly', '30 m fly', 'fly 30', '30m flying sprint', 'flying 30', '30m fly (s)'],
+    cmj: ['cmj', 'cmj (cm)', 'countermovement jump', 'counter movement jump', 'cmj height'],
+    slcmj: ['slcmj', 'single-leg cmj', 'single leg cmj', 'sl cmj', 'single-leg cmj (cm)', 'single leg cmj (cm)'],
+    broadJump: ['broadjump', 'broad jump', 'broad jump (cm)', 'standing long jump', 'standing broad jump'],
+    deadliftPower: ['deadliftpower', 'tb deadlift power', 'tb deadlift power (w)', 'trap bar deadlift power', 'deadlift power', 'deadlift power (w)'],
+    agility: ['agility', 'raducanu lateral agility', 'raducanu lateral agility (s)', 'lateral agility', 'agility (s)'],
+    pentagonRatio: ['pentagonratio', 'pentagon crawl ratio', 'pentagon ratio', 'pentagon crawl', 'crawl ratio']
   };
   const normHead = h => String(h ?? '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[’`]/g, "'");
 
@@ -502,7 +589,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     const norm = n => n.trim().toLowerCase().replace(/\s+/g, ' ');
     const known = new Map();
     for (const p of existing) { const k = norm(p.name); known.set(k, known.has(k) ? 'ambiguous' : p); }
-    let nMeasure = 0, matched = 0;
+    let nMeasure = 0, nTests = 0, matched = 0;
     rows.slice(headerIdx + 1).forEach((r, i) => {
       const g = k => map[k] >= 0 ? r[map[k]] : '';
       const str = k => String(g(k) ?? '').trim();
@@ -515,8 +602,9 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       if (sex && dob) {
         const key = norm(name) + '|' + iso(dob);
         if (!byKey.has(key)) {
-          const ex = existing.find(x => norm(x.name) === norm(name) && x.dob === iso(dob));
-          byKey.set(key, { id: ex ? ex.id : 'p' + Math.random().toString(36).slice(2, 10), name: ex ? ex.name : name, sex, dob: iso(dob), squad: str('squad'), mother: heightCm(g('mother')), father: heightCm(g('father')), assessments: [] });
+          const near = existing.filter(x => norm(x.name) === norm(name) && x.dob && Math.abs(parseDate(x.dob) - dob) <= 45 * DAY);
+          const ex = existing.find(x => norm(x.name) === norm(name) && x.dob === iso(dob)) || (near.length === 1 ? near[0] : null);
+          byKey.set(key, { id: ex ? ex.id : 'p' + Math.random().toString(36).slice(2, 10), name: ex ? ex.name : name, sex: ex ? ex.sex : sex, dob: ex ? ex.dob : iso(dob), squad: str('squad'), mother: heightCm(g('mother')), father: heightCm(g('father')), assessments: [], tests: [] });
         }
         p = byKey.get(key);
         const k = norm(name); if (!known.has(k)) known.set(k, p);
@@ -526,19 +614,29 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
         if (!hit) { errors.push(`Row ${rowNo}: ${name} is not in the dashboard yet. Add them with the first-test sheet (date of birth, sex and parents' heights).`); return; }
         if (hit === 'ambiguous' || fileHit.length > 1) { errors.push(`Row ${rowNo}: more than one player is called ${name}. Add a date of birth column to tell them apart.`); return; }
         const key = norm(hit.name) + '|' + hit.dob;
-        if (!byKey.has(key)) { byKey.set(key, { id: hit.id, name: hit.name, sex: hit.sex, dob: hit.dob, squad: hit.squad || '', mother: hit.mother ?? null, father: hit.father ?? null, assessments: [] }); matched++; }
+        if (!byKey.has(key)) { byKey.set(key, { id: hit.id, name: hit.name, sex: hit.sex, dob: hit.dob, squad: hit.squad || '', mother: hit.mother ?? null, father: hit.father ?? null, assessments: [], tests: [] }); matched++; }
         p = byKey.get(key);
       }
       if (!p.mother) p.mother = heightCm(g('mother'));
       if (!p.father) p.father = heightCm(g('father'));
       if (!p.squad && str('squad')) p.squad = str('squad');
       const date = parseDate(g('date')), h = heightCm(g('height')), m = num(g('mass'));
+      const scores = {};
+      for (const mt of METRICS) { const v = map[mt.key] >= 0 ? num(g(mt.key)) : null; if (v != null) scores[mt.key] = v; }
+      const hasScores = Object.keys(scores).length > 0;
       if (date && h > 0 && m > 0) {
         p.assessments = p.assessments.filter(a => a.date !== iso(date)).concat({ date: iso(date), height: h, mass: m });
         nMeasure++;
-      } else if (date || h || m) errors.push(`Row ${rowNo}: ${name} has an incomplete measurement (needs test date, height and weight).`);
+      } else if ((date || h || m) && !hasScores) errors.push(`Row ${rowNo}: ${name} has an incomplete measurement (needs test date, height and weight).`);
+      if (hasScores) {
+        if (!date) errors.push(`Row ${rowNo}: ${name} has test results but no test date.`);
+        else {
+          const t = { date: iso(date), ...(h > 0 ? { height: h } : {}), ...scores };
+          p.tests = p.tests.filter(x => x.date !== t.date).concat(t); nTests++;
+        }
+      }
     });
-    return { players: [...byKey.values()], errors, measurements: nMeasure, matchedByName: matched };
+    return { players: [...byKey.values()], errors, measurements: nMeasure, tests: nTests, matchedByName: matched };
   }
 
   function playersFromCSV(text) {
@@ -547,6 +645,25 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     const h = detectHeader(rows), map = autoMap(rows[h]);
     if (map.name < 0 && map.surname < 0) throw new Error('Missing a name column.');
     return playersFromRows(rows, h, map);
+  }
+
+  // Testing Hub data.json → spreadsheet rows. Birth date is estimated from the age recorded at each test.
+  function testingHubRows(json) {
+    if (!json || !Array.isArray(json.athletes)) throw new Error('That file is not a Testing Hub data.json (no athletes list).');
+    const rows = [['Name', 'Sex', 'Date of birth', 'Test date', 'Height (cm)', ...METRICS.map(m => m.key)]];
+    for (const a of json.athletes) {
+      const series = (a.series || []).filter(t => parseDate(t.date));
+      const est = series.filter(t => typeof t.age === 'number').map(t => parseDate(t.date).getTime() - t.age * 365.25 * DAY).sort((x, y) => x - y);
+      const dob = est.length ? iso(new Date(est[Math.floor(est.length / 2)])) : '';
+      const sex = /^b|^m/i.test(a.sex || '') ? 'M' : /^g|^f/i.test(a.sex || '') ? 'F' : '';
+      for (const t of series) rows.push([a.name, sex, dob, t.date, t.height ?? '', ...METRICS.map(m => t[m.key] ?? '')]);
+    }
+    return rows;
+  }
+  function testRows(players) {
+    const rows = [['name', 'sex', 'dob', 'squad', 'date', 'height_cm', ...METRICS.map(m => m.key)]];
+    for (const p of players) for (const t of p.tests || []) rows.push([p.name, p.sex, p.dob, p.squad || '', t.date, t.height ?? '', ...METRICS.map(m => t[m.key] ?? '')]);
+    return rows;
   }
 
   const csvCell = v => { const s = v == null ? '' : String(v); return /[",\n]/.test(s) ? '"' + s.replace(/"/g, '""') + '"' : s; };
@@ -576,6 +693,12 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
   const resultsCSV = profiles => toCSV(resultsRows(profiles));
 
   // ---- Example squad (synthetic, deterministic) ----
+  // Example test scores: value at biological age 12, change per year, extra per year for boys past 13, spread.
+  const DEMO_PERF = {
+    sprint10: { a: 2.05, b: -0.055, boy: -0.02, sd: 0.09 }, fly30: { a: 4.05, b: -0.12, boy: -0.04, sd: 0.17 },
+    cmj: { a: 27, b: 2.4, boy: 1.2, sd: 3.5 }, slcmj: { a: 19, b: 1.7, boy: 0.8, sd: 2.6 }, broadJump: { a: 152, b: 9, boy: 4, sd: 11 },
+    deadliftPower: { a: 300, b: 70, boy: 30, sd: 55 }, agility: { a: 5.2, b: -0.18, boy: -0.05, sd: 0.3 }, pentagonRatio: { a: 5.2, b: 0.15, boy: 0, sd: 0.4 }
+  };
   function demoSquad(today = new Date()) {
     let seed = 20261003;
     const rnd = () => { seed = (seed * 1664525 + 1013904223) % 4294967296; return seed / 4294967296; };
@@ -599,9 +722,10 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
         const peak = sex === 'M' ? 13.8 : 11.8;
         const bioAge = ca => peak + (ca + offset - peak) * tempo;
         const wFactor = 1 + gauss() * 0.1;
-        const visits = 3 + Math.floor(rnd() * 4);
+        const visits = 6 + Math.floor(rnd() * 5);
         const lastGap = Math.floor(rnd() * 110) + 5;
-        const assessments = [];
+        const assessments = [], tests = [];
+        const talent = gauss() * 0.8, spread = METRICS.map(() => gauss() * 0.6);
         const back = [lastGap];
         for (let v = 1; v < visits; v++) back.push(back[v - 1] + 80 + Math.floor(rnd() * 40));
         for (let v = visits - 1; v >= 0; v--) {
@@ -611,14 +735,22 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
           const h = target * interpRef(REF['pct' + sex], ba) / 100 + gauss() * 0.25;
           const w = interpRef(REF['wt' + sex], ba) * wFactor * (target / (sex === 'M' ? 176.8 : 163.3)) + gauss() * 0.4;
           assessments.push({ date: iso(d), height: Math.round(h * 10) / 10, mass: Math.round(w * 10) / 10 });
+          // Test scores track biological more than chronological age, plus a stable individual level.
+          const sc = { date: iso(d) };
+          METRICS.forEach((m, k) => {
+            const g = DEMO_PERF[m.key], z = talent + spread[k] + gauss() * 0.35, boy = sex === 'M' ? Math.max(0, ba - 13) * g.boy : 0;
+            const v = g.a + g.b * (ba - 12) + boy + (m.lower ? -1 : 1) * z * g.sd;
+            sc[m.key] = +v.toFixed(m.d);
+          });
+          tests.push(sc);
         }
-        players.push({ id: 'demo' + (n++), name: fn + ' ' + last[(n * 7) % last.length], sex, dob: iso(dob), squad, mother, father, assessments, example: true });
+        players.push({ id: 'demo' + (n++), name: fn + ' ' + last[(n * 7) % last.length], sex, dob: iso(dob), squad, mother, father, assessments, tests, example: true });
       });
     }
     return players;
   }
 
-  const api = { DEFAULT_SETTINGS, STATUS, TIMING, TEMPO, CI, parseDate, iso, decimalAge, daysBetween, biologicalAge, midparentCm, predictAdultHeight, ciFor, assess, velocity, profile, parseCSV, playersFromCSV, playersFromRows, detectHeader, autoMap, FIELDS, heightCm, rawCSV, resultsCSV, rawRows, resultsRows, toCSV, demoSquad, interpRef };
+  const api = { testingHubRows, testRows, METRICS, NORMS, sizeAt, testRecords, percentileAmong, DEFAULT_SETTINGS, STATUS, TIMING, TEMPO, CI, parseDate, iso, decimalAge, daysBetween, biologicalAge, midparentCm, predictAdultHeight, ciFor, assess, velocity, profile, parseCSV, playersFromCSV, playersFromRows, detectHeader, autoMap, FIELDS, heightCm, rawCSV, resultsCSV, rawRows, resultsRows, toCSV, demoSquad, interpRef };
   root.GM = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -650,9 +782,9 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     sort: { key: 'pct', dir: -1 },
     confirm: null, msg: {}, imode: 'add',
     session: { squad: '', date: '', vals: {} },
-    imp: null
+    imp: null, metric: 'sprint10', paxis: 'ba'
   };
-  const TABS = ['squad', 'player', 'record', 'data', 'calculator', 'method'];
+  const TABS = ['squad', 'player', 'perf', 'record', 'data', 'calculator', 'method'];
 
   // ---------- storage: the artifact's shared store when the viewer offers it, else this browser ----------
   const store = { mode: 'starting', db: null, downloads: null, error: '', localOld: [] };
@@ -693,7 +825,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     }, () => { });
     render();
   }
-  const cleanPlayer = p => JSON.parse(JSON.stringify({ name: p.name, sex: p.sex, dob: p.dob, squad: p.squad || '', mother: p.mother ?? null, father: p.father ?? null, assessments: p.assessments || [], ...(p.example ? { example: true } : {}) }));
+  const cleanPlayer = p => JSON.parse(JSON.stringify({ name: p.name, sex: p.sex, dob: p.dob, squad: p.squad || '', mother: p.mother ?? null, father: p.father ?? null, assessments: p.assessments || [], tests: p.tests || [], ...(p.example ? { example: true } : {}) }));
   // ---------- storage on your own site: Supabase, behind a coach sign-in ----------
   async function startSupabase(cfg) {
     if (!window.supabase || !window.supabase.createClient) {
@@ -807,6 +939,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       const ex = S.players.find(x => uniqueKey(x) === uniqueKey(np));
       if (ex) {
         for (const a of np.assessments) ex.assessments = ex.assessments.filter(b => b.date !== a.date).concat(a);
+        for (const t of np.tests || []) ex.tests = (ex.tests || []).filter(b => b.date !== t.date).concat(t);
         ex.mother = ex.mother || np.mother; ex.father = ex.father || np.father; ex.squad = ex.squad || np.squad;
         changed.push(ex);
       } else { S.players.push(np); changed.push(np); }
@@ -815,8 +948,10 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     return { changed, removed: removed.filter(id => !keep.has(id)) };
   }
 
-  let _prof = null;
-  const invalidate = () => { _prof = null; };
+  let _prof = null, _recs = null;
+  const invalidate = () => { _prof = null; _recs = null; };
+  const records = () => _recs || (_recs = G.testRecords(profiles(), S.settings));
+  const metricOf = k => G.METRICS.find(m => m.key === k) || G.METRICS[0];
   function profiles() {
     if (!_prof) _prof = S.players.map(p => G.profile(p, S.settings));
     return _prof;
@@ -952,6 +1087,98 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
   const legend = (labels, cols) => `<div class="legend">${labels.map((l, i) => `<span><i style="background:${cols[i]}"></i>${esc(l)}</span>`).join('')}</div>`;
 
   // ---------- views ----------
+  // x/y scatter with optional highlighted points.
+  function scatterChart(W, { points, xDomain, yDomain, xLabel, yFmt = v => v, H = 300, emptyText }) {
+    if (!points.length) return `<div class="empty">${esc(emptyText || 'No test results to show.')}</div>`;
+    const left = 52, right = 14, top = 12, bottom = 40;
+    const x = v => left + (v - xDomain[0]) / (xDomain[1] - xDomain[0]) * (W - left - right);
+    const y = v => top + (1 - (v - yDomain[0]) / (yDomain[1] - yDomain[0])) * (H - top - bottom);
+    let s = `<svg width="${W}" height="${H}" role="img">`;
+    for (const v of niceTicks(yDomain[0], yDomain[1], 5)) s += `<line class="grid" x1="${left}" x2="${W - right}" y1="${y(v)}" y2="${y(v)}"/><text x="${left - 6}" y="${y(v) + 4}" text-anchor="end">${yFmt(v)}</text>`;
+    for (const v of niceTicks(xDomain[0], xDomain[1], Math.max(3, Math.floor((W - 80) / 70)))) s += `<line class="grid" x1="${x(v)}" x2="${x(v)}" y1="${top}" y2="${H - bottom}"/><text x="${x(v)}" y="${H - bottom + 16}" text-anchor="middle">${v}</text>`;
+    s += `<text class="gl" x="${(left + W - right) / 2}" y="${H - 4}" text-anchor="middle">${esc(xLabel)}</text>`;
+    for (const p of points.filter(p => !p.hot)) s += `<circle cx="${x(p.x)}" cy="${y(p.y)}" r="2.6" fill="var(--line-strong)" opacity=".45"/>`;
+    for (const p of points.filter(p => p.hot)) s += `<g ${tipAttr(p.tip)} data-pid="${esc(p.id)}" style="cursor:pointer"><circle cx="${x(p.x)}" cy="${y(p.y)}" r="11" fill="transparent"/><circle cx="${x(p.x)}" cy="${y(p.y)}" r="5.5" fill="${p.color}" stroke="var(--ink)" stroke-width="1.2"/></g>`;
+    return s + '</svg>';
+  }
+  const pctTxt = r => r && r.pct != null ? (r.pct < 1 ? '<1' : r.pct > 99 ? '>99' : Math.round(r.pct)) : '—';
+  const pctBar = r => r && r.pct != null ? `<span class="pbar" ${tipAttr(`Better than about ${pctTxt(r)}% of players at that age<br>Compared with ${r.tests} tests from ${r.players} other players`)}><i style="width:${Math.max(2, r.pct)}%"></i></span><span class="num">${pctTxt(r)}</span>` : `<span class="sub" ${r ? tipAttr(`Not enough comparison data yet (${r.players} other player${r.players === 1 ? '' : 's'})`) : ''}>—</span>`;
+  const fmtVal = (m, v) => typeof v === 'number' ? v.toFixed(m.d) + (m.unit ? ' ' + m.unit : '') : '—';
+  const metricSelect = () => `<label class="field" style="width:230px"><span>Test</span><select id="pm-metric">${[...new Set(G.METRICS.map(m => m.cat))].map(c => `<optgroup label="${esc(c)}">${G.METRICS.filter(m => m.cat === c).map(m => `<option value="${m.key}" ${S.metric === m.key ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</optgroup>`).join('')}</select></label>`;
+  // Latest result per player for a metric, with both percentiles.
+  function latestScores(list, m) {
+    const R = records(), out = [];
+    for (const p of list) {
+      const mine = R.filter(r => r.pid === p.id && typeof r.vals[m.key] === 'number').sort((a, b) => b.t - a.t);
+      if (!mine.length) continue;
+      const r = mine[0];
+      out.push({ p, r, age: G.percentileAmong(R, r, m, 'ca'), mat: G.percentileAmong(R, r, m, 'ba') });
+    }
+    return out;
+  }
+
+  function viewPerf() {
+    const R = records();
+    if (!R.length) return `<section class="panel"><h2>No test results yet</h2><p class="note" style="margin-top:8px">Import Testing Hub results on the Data tab: either its data.json file or a spreadsheet with name, test date and a column per test. Results are matched to players by name.</p>
+      <div class="bar" style="margin-top:14px"><button class="btn primary tab-link" data-goto="data">Import test results</button></div></section>`;
+    const m = metricOf(S.metric);
+    const list = filtered();
+    const rows = latestScores(list, m);
+    const both = rows.filter(x => x.age && x.age.pct != null && x.mat && x.mat.pct != null);
+    const bar = `<div class="bar">${metricSelect()}
+        <label class="field" style="width:150px"><span>Squad</span>
+          <select id="f-squad"><option value="all">All squads</option>${squads().map(s => `<option ${S.filter.squad === s ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
+        <div class="field"><span>Sex</span><div class="seg" role="group" aria-label="Sex">
+          ${[['all', 'All'], ['M', 'Boys'], ['F', 'Girls']].map(([v, l]) => `<button data-sex="${v}" aria-pressed="${S.filter.sex === v}">${l}</button>`).join('')}</div></div>
+        <span class="sub" style="margin-left:auto">${rows.length} player${rows.length === 1 ? '' : 's'} with a ${esc(m.label)} result${m.lower ? ' · lower is better' : ''}</span></div>`;
+    const tipFor = x => `<b>${esc(x.p.name)}</b> · ${fmtDate(x.r.date)}<br>${esc(m.label)} ${fmtVal(m, x.r.vals[m.key])}<br>Age ${f(x.r.ca, 1)} · biological age ${f(x.r.ba, 1)} (${sgn(x.r.baDiff, 1)})<br>By age: ${pctTxt(x.age)} · by maturity: ${pctTxt(x.mat)}`;
+    const shift = x => x.mat.pct - x.age.pct;
+    const c1 = chartSlot('perf-shift', W => rowChart(W, {
+      rows: both.slice().sort((a, b) => shift(b) - shift(a)).map(x => ({ id: x.p.id, label: x.p.name, tip: tipFor(x), x })),
+      domain: [0, 100], ticks: [0, 25, 50, 75, 100], guides: [{ v: 50, label: W < 520 ? '' : 'Average' }],
+      mark: (r, X, mid) => { const a = X(r.x.age.pct), b = X(r.x.mat.pct), col = r.x.r.timingIdx != null ? TIMING_COL[r.x.r.timingIdx] : 'var(--muted)';
+        return `<line x1="${a}" x2="${b}" y1="${mid}" y2="${mid}" stroke="var(--line-strong)" stroke-width="2"/><circle cx="${a}" cy="${mid}" r="4.5" fill="var(--surface)" stroke="var(--ink-2)" stroke-width="2"/><circle cx="${b}" cy="${mid}" r="5" fill="${col}" stroke="var(--surface)" stroke-width="1.5"/>`; },
+      emptyText: 'Percentiles need results from at least four other players of the same sex at a similar age.'
+    }));
+    const axis = S.paxis === 'ca' ? 'ca' : 'ba';
+    const pool = R.filter(r => typeof r.vals[m.key] === 'number' && r[axis] != null && (S.filter.sex === 'all' || r.sex === S.filter.sex));
+    const xs = pool.map(r => r[axis]), ys = pool.map(r => r.vals[m.key]);
+    const pad = (lo, hi) => { const d = (hi - lo) * 0.06 || 1; return [lo - d, hi + d]; };
+    const c2 = chartSlot('perf-scatter', W => scatterChart(W, {
+      points: pool.map(r => ({ x: r[axis], y: r.vals[m.key] })).concat(rows.filter(x => x.r[axis] != null).map(x => ({ x: x.r[axis], y: x.r.vals[m.key], hot: true, id: x.p.id, tip: tipFor(x), color: x.r.timingIdx != null ? TIMING_COL[x.r.timingIdx] : 'var(--muted)' }))),
+      xDomain: xs.length ? [Math.floor(Math.min(...xs)), Math.ceil(Math.max(...xs))] : [8, 16], yDomain: ys.length ? pad(Math.min(...ys), Math.max(...ys)) : [0, 1],
+      xLabel: axis === 'ba' ? 'Biological age (years)' : 'Chronological age (years)', yFmt: v => +v.toFixed(Math.max(0, m.d - 1))
+    }));
+    const tbl = rows.slice().sort((a, b) => (b.mat?.pct ?? -1) - (a.mat?.pct ?? -1)).map(x => `<tr class="click" data-pid="${esc(x.p.id)}" tabindex="0"><td><b>${esc(x.p.name)}</b></td><td>${esc(x.p.squad || '—')}</td><td>${fmtDate(x.r.date)}</td><td class="n">${f(x.r.ca, 1)}</td><td class="n">${f(x.r.ba, 1)}</td><td>${timingPill(x.r.timing != null ? x.r : (x.r.timingIdx != null ? { timing: G.TIMING[x.r.timingIdx], timingIdx: x.r.timingIdx } : null))}</td><td>${x.r.statusIdx != null ? pill(G.STATUS[x.r.statusIdx], STATUS_COL[x.r.statusIdx]) : '—'}</td><td class="n">${fmtVal(m, x.r.vals[m.key])}</td><td class="pcell">${pctBar(x.age)}</td><td class="pcell">${pctBar(x.mat)}</td><td class="n">${x.age?.pct != null && x.mat?.pct != null ? sgn(Math.round(x.mat.pct) - Math.round(x.age.pct), 0) : '—'}</td></tr>`).join('');
+    const noMat = rows.filter(x => x.r.ba == null);
+    return bar + `<div class="grid2">
+      <section class="panel"><div class="panel-head"><div><h3>Compared by age, then by maturity</h3><p class="sub">${esc(m.label)} percentile (100 = best): hollow dot against players the same age, filled dot against players at the same stage of growth</p></div>${legend(G.TIMING, TIMING_COL)}</div>${c1}</section>
+      <section class="panel"><div class="panel-head"><div><h3>${esc(m.label)} by ${axis === 'ba' ? 'biological' : 'chronological'} age</h3><p class="sub">Every test (grey) with each player's latest result coloured by maturity timing${m.lower ? '. Lower is better.' : ''}</p></div>
+        <div class="seg" role="group" aria-label="Age axis"><button data-paxis="ca" aria-pressed="${axis === 'ca'}">Age</button><button data-paxis="ba" aria-pressed="${axis === 'ba'}">Biological age</button></div></div>${c2}</section></div>
+      <section class="grid" style="gap:10px"><div class="panel-head" style="margin:0"><h3>Latest ${esc(m.label)} results</h3><span class="sub">Early maturers usually drop when judged by maturity; late developers usually rise.</span></div>
+      <div class="table-wrap"><table><thead><tr><th>Player</th><th>Squad</th><th>Tested</th><th class="n">Age</th><th class="n">Bio age</th><th>Timing</th><th>Status</th><th class="n">Result</th><th>By age</th><th>By maturity</th><th class="n">Change</th></tr></thead>
+      <tbody>${tbl || `<tr><td colspan="11" class="empty">No ${esc(m.label)} results for these players.</td></tr>`}</tbody></table></div>
+      ${noMat.length ? `<p class="sub">No maturity estimate on the test date for ${noMat.map(x => esc(x.p.name)).join(', ')}. They need parents' heights and a height and weight measured within a few months of the test.</p>` : ''}</section>`;
+  }
+
+  // Player page: one row per test with both percentiles for the latest result.
+  function playerPerf(p) {
+    const R = records(), mine = R.filter(r => r.pid === p.id).sort((a, b) => b.t - a.t);
+    if (!mine.length) return '';
+    const rows = G.METRICS.map(m => {
+      const r = mine.find(x => typeof x.vals[m.key] === 'number'); if (!r) return '';
+      const a = G.percentileAmong(R, r, m, 'ca'), b = G.percentileAmong(R, r, m, 'ba');
+      return `<tr><td><b>${esc(m.label)}</b> <span class="sub">${esc(m.cat)}</span></td><td>${fmtDate(r.date)}</td><td class="n">${fmtVal(m, r.vals[m.key])}</td><td class="pcell">${pctBar(a)}</td><td class="pcell">${pctBar(b)}</td><td class="n">${a?.pct != null && b?.pct != null ? sgn(Math.round(b.pct) - Math.round(a.pct), 0) : '—'}</td></tr>`;
+    }).join('');
+    const conf = S.confirm;
+    const hist = mine.map(r => { const k = 'del-t:' + r.date;
+      return `<tr><td>${fmtDate(r.date)}</td><td class="n">${f(r.ca, 1)}</td><td class="n">${f(r.ba, 1)}</td>${G.METRICS.map(m => `<td class="n">${typeof r.vals[m.key] === 'number' ? r.vals[m.key].toFixed(m.d) : '—'}</td>`).join('')}
+        <td>${conf === k ? `<span class="confirm"><button class="btn small danger" data-del-t="${esc(r.date)}">Delete</button><button class="btn small" data-cancel>Keep</button></span>` : `<button class="btn small" data-ask="${esc(k)}">Remove</button>`}</td></tr>`; }).join('');
+    return `<section class="panel"><div class="panel-head"><div><h3>Performance tests</h3><p class="sub">Latest result for each test. Percentile 100 = best, against players the same age and against players at the same stage of growth.</p></div><button class="btn small tab-link" data-goto="perf">Squad view</button></div>
+      <div class="table-wrap"><table><thead><tr><th>Test</th><th>Tested</th><th class="n">Result</th><th>By age</th><th>By maturity</th><th class="n">Change</th></tr></thead><tbody>${rows}</tbody></table></div></section>
+      <section class="grid" style="gap:10px"><h3>Test history</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th class="n">Age</th><th class="n">Bio age</th>${G.METRICS.map(m => `<th class="n">${esc(m.label)}${m.unit ? ` <span class="sub">${esc(m.unit)}</span>` : ''}</th>`).join('')}<th></th></tr></thead><tbody>${hist}</tbody></table></div></section>`;
+  }
+
   function viewSquad() {
     if (!S.players.length) return `<section class="panel"><h2>No players yet</h2><p class="note" style="margin-top:8px">Import your existing measurements from Excel or CSV on the Data tab, or add players and record a testing session on the Record tab.</p>
       <div class="bar" style="margin-top:14px"><button class="btn primary tab-link" data-goto="data">Import a spreadsheet</button><button class="btn tab-link" data-goto="record">Record a session</button></div></section>`;
@@ -1187,7 +1414,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       <form id="edit-p" class="form-grid">${playerFields(p, 'e')}<div class="field" style="align-self:end"><button class="btn" type="submit">Save details</button></div></form>
       <p class="ok" role="status">${esc(S.msg.e || '')}</p></section>`;
 
-    return picker + head + cards + charts + hist + `<div class="grid2">${addForm}${editForm}</div>`;
+    return picker + head + cards + charts + hist + playerPerf(p) + `<div class="grid2">${addForm}${editForm}</div>`;
   }
 
   const playerFields = (p = {}, pre) => `
@@ -1320,7 +1547,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       <div><span class="label">Match your columns</span><div class="form-grid" style="margin-top:8px">${G.FIELDS.map(([k, label, req]) => `<label class="field"><span>${esc(label)}${req ? ' *' : ''}</span><select data-map="${k}">${opts(map[k])}</select></label>`).join('')}</div>
         <p class="sub" style="margin-top:6px">${byName ? '<b>No sex or date-of-birth column, so rows are matched by name to players already in the dashboard.</b> New players need the first-test sheet.' : 'New players need name, sex and date of birth. Rows without a test date, height and weight still add the player.'}</p></div>
       ${missing.length ? `<p class="err">Match a column for: ${missing.map(m => esc(m[1])).join(', ')}.</p>` : `
-      <div class="panel" style="background:var(--surface-2);border:0"><b>${res.players.length} players · ${res.measurements} measurements</b>${existing ? ` · ${existing} already in the dashboard (new test dates are added to them)` : ''}
+      <div class="panel" style="background:var(--surface-2);border:0"><b>${res.players.length} players · ${res.measurements} measurements · ${res.tests} test results</b>${existing ? ` · ${existing} already in the dashboard (new test dates are added to them)` : ''}
         ${res.errors.length ? `<details style="margin-top:6px"><summary class="err">${res.errors.length} row${res.errors.length === 1 ? '' : 's'} need attention</summary><ul class="sub">${res.errors.slice(0, 12).map(x => `<li>${esc(x)}</li>`).join('')}${res.errors.length > 12 ? `<li>and ${res.errors.length - 12} more</li>` : ''}</ul></details>` : ''}</div>
       ${sample ? `<div class="table-wrap"><table><thead><tr><th>Name</th><th>Sex</th><th>Born</th><th>Squad</th><th class="n">Mother</th><th class="n">Father</th><th>Latest test</th><th class="n">Height</th><th class="n">Mass</th></tr></thead><tbody>${sample}</tbody></table></div><p class="sub">Showing the first ${Math.min(6, res.players.length)} players as they will be saved.</p>` : ''}
       <div class="bar"><div class="seg" role="group" aria-label="Import mode"><button data-imode="add" aria-pressed="${S.imode !== 'replace'}">Add to current data</button><button data-imode="replace" aria-pressed="${S.imode === 'replace'}">Replace all current data</button></div>
@@ -1334,10 +1561,10 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     const canDownload = !!store.downloads || !window.claude;
     const xlsxOK = !!window.XLSX;
     return `<section class="panel"><div class="panel-head"><div><h3>Import a spreadsheet</h3><p class="sub">Excel (.xlsx, .xls) or CSV, one row per test</p></div>
-        <div class="bar"><button class="btn small" data-file="first">${canDownload && xlsxOK ? 'First-test template' : 'Copy first-test template'}</button><button class="btn small" data-file="follow">${canDownload && xlsxOK ? 'Later-tests template' : 'Copy later-tests template'}</button></div></div>
-      <p class="note" style="margin-bottom:12px">Two sheets: a <b>first test</b> for each new player (name, sex, date of birth, squad, parents' heights, height, weight), then <b>later tests</b> with just name, test date, height and weight. Later tests are matched to players by name.</p>
+        <div class="bar"><button class="btn small" data-file="first">${canDownload && xlsxOK ? 'First-test template' : 'Copy first-test template'}</button><button class="btn small" data-file="follow">${canDownload && xlsxOK ? 'Later-tests template' : 'Copy later-tests template'}</button><button class="btn small" data-file="tests">${canDownload && xlsxOK ? 'Test results template' : 'Copy test results template'}</button></div></div>
+      <p class="note" style="margin-bottom:12px">Two sheets: a <b>first test</b> for each new player (name, sex, date of birth, squad, parents' heights, height, weight), then <b>later tests</b> with just name, test date, height and weight. Later tests are matched to players by name.<br>Performance test results (the Testing Hub tests) can go in their own sheet with name, test date and a column per test, or import the Testing Hub's <b>data.json</b> file directly.</p>
       ${S.imp ? '' : `<div class="grid2" style="grid-template-columns:repeat(auto-fit,minmax(min(100%,300px),1fr))">
-        <label class="field"><span>Choose a file</span><input type="file" id="imp-file" accept=".xlsx,.xls,.xlsm,.csv,.tsv,.txt"></label>
+        <label class="field"><span>Choose a file</span><input type="file" id="imp-file" accept=".xlsx,.xls,.xlsm,.csv,.tsv,.txt,.json"></label>
         <div class="field"><span>Or paste rows copied from a spreadsheet</span><textarea id="imp-text" rows="4" placeholder="Paste here, including the heading row"></textarea><div><button class="btn small" id="imp-paste">Use pasted rows</button></div></div></div>`}
       <div id="imp-area">${importArea()}</div>
       <div role="status" style="margin-top:8px">${S.msg.imp || ''}</div></section>
@@ -1382,6 +1609,8 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       <p>Biological age is the age at which an average child (UK90 median) has reached the same % of adult height. BA − CA within ±${S.settings.timingCuts[0]} years is on time, ±${S.settings.timingCuts[0]}–${S.settings.timingCuts[1]} slightly early or late, and beyond ±${S.settings.timingCuts[1]} early or late. The LTAD guide's three-way split (±1 year) is the outer pair.</p>
       <h3>Growth rate and tempo</h3>
       <p>Change in height and body mass since the previous measurement, scaled to a year. Gaps under ${S.settings.shortIntervalDays} days are flagged because a few millimetres of measurement error becomes a large annual rate. Height growth of ${S.settings.heightTempo[1]} cm/yr or more is high (Kemper et al., 2015) and is linked to higher injury risk; a player who is also Circa-PHV is flagged first. A ~12-month rate is shown on the player page when a measurement 9–15 months earlier exists.</p>
+      <h3>Performance tests by age and by maturity</h3>
+      <p>For each test result the dashboard estimates the player's maturity on the test date, from height and body mass measured on or around that day (interpolated between measurements up to 400 days apart, or the nearest within 60 days). The result is then compared two ways with other players' tests from any date: against players of the same sex at the same <b>chronological age</b>, and against players at the same <b>biological age</b>. In each case a straight line is fitted through tests within ±${G.NORMS.window} years (±${G.NORMS.wide} if there are too few), and the percentile is how far the result sits above or below that line. At least ${G.NORMS.minPlayers} other players and ${G.NORMS.minTests} tests are needed. The player's own tests are left out. With a small squad the comparison groups are small, so read percentiles as a guide; they firm up as each testing round adds data.</p>
       <h3>Checks</h3>
       <ul><li>Measure each quarter, and within ±30 days (ideally ±7) of testing or competition.</li><li>Does the growth rate fit the status? A Post-PHV player growing fast, or a height that went down, is flagged as a data check.</li><li>Predictions need biological parents' heights. Without them the player is listed but not banded.</li></ul>
       <h3>Sources</h3>
@@ -1404,7 +1633,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     if (store.mode === 'supa' && (!store.user || S.recovery || S.notCoach) && S.tab !== 'calculator' && S.tab !== 'method') { $('#view').innerHTML = viewLogin(); return; }
     const loading = store.mode === 'starting' || ((store.mode === 'db' || store.mode === 'supa') && !S.loaded);
     if (loading && S.tab !== 'calculator' && S.tab !== 'method') { $('#view').innerHTML = `<div class="panel"><h3>Loading squad data</h3><p class="sub">Fetching players and measurements.</p></div>`; return; }
-    const v = { squad: viewSquad, player: viewPlayer, record: viewRecord, calculator: viewCalculator, data: viewData, method: viewMethod }[S.tab];
+    const v = { squad: viewSquad, player: viewPlayer, perf: viewPerf, record: viewRecord, calculator: viewCalculator, data: viewData, method: viewMethod }[S.tab];
     $('#view').innerHTML = v();
     drawCharts();
   }
@@ -1421,9 +1650,13 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     } else if (kind === 'follow') {
       X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(TEMPLATES.follow), 'Tests');
       X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['Later tests: one row per player per test'], ['Name must match the name used on the first-test sheet'], ['Test date: DD/MM/YYYY or YYYY-MM-DD'], ['Height in cm, weight in kg'], ['Delete the example rows before importing']]), 'Notes');
+    } else if (kind === 'tests') {
+      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(TEMPLATES.tests), 'Test results');
+      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet([['Test results: one row per player per testing session'], ['Name must match the name already in the dashboard'], ['Test date: DD/MM/YYYY or YYYY-MM-DD'], ['Leave a test blank if it was not done'], ['Height is optional; weight comes from the growth measurements'], ['Delete the example row before importing']]), 'Notes');
     } else {
       X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(G.resultsRows(filtered())), 'Results');
       X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(G.rawRows(S.players)), 'Measurements');
+      X.utils.book_append_sheet(wb, X.utils.aoa_to_sheet(G.testRows(S.players)), 'Test results');
     }
     return X.write(wb, { bookType: 'xlsx', type: 'array' });
   }
@@ -1441,14 +1674,18 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
   const stamp = () => todayISO();
   const TEMPLATES = {
     first: [['Name', 'Sex', 'Date of birth', 'Squad', "Mother's height (cm)", "Father's height (cm)", 'Test date', 'Height (cm)', 'Weight (kg)'], ['Jane Example', 'F', '21/04/2013', 'U13', 165, 180, '14/09/2026', 152.4, 41.2]],
-    follow: [['Name', 'Test date', 'Height (cm)', 'Weight (kg)'], ['Jane Example', '10/12/2026', 154.1, 42.6], ['Jane Example', '15/03/2027', 155.9, 43.8]]
+    follow: [['Name', 'Test date', 'Height (cm)', 'Weight (kg)'], ['Jane Example', '10/12/2026', 154.1, 42.6], ['Jane Example', '15/03/2027', 155.9, 43.8]],
+    tests: [['Name', 'Test date', 'Height (cm)', ...G.METRICS.map(m => m.label + (m.unit ? ` (${m.unit})` : ''))], ['Jane Example', '14/09/2026', 152.4, 2.05, 3.98, 27.5, 19.2, 151, 2.62, 310, 5.21, 5.3]]
   };
 
   // ---------- import ----------
   async function readImportFile(file) {
     S.msg.imp = ''; S.confirm = null;
     try {
-      if (/\.(csv|tsv|txt)$/i.test(file.name) || !window.XLSX) {
+      if (/\.json$/i.test(file.name)) {
+        let json; try { json = JSON.parse(await file.text()); } catch (e) { throw new Error('That JSON file could not be read.'); }
+        setImport([{ name: 'Testing Hub', rows: G.testingHubRows(json) }], file.name);
+      } else if (/\.(csv|tsv|txt)$/i.test(file.name) || !window.XLSX) {
         if (!/\.(csv|tsv|txt)$/i.test(file.name)) throw new Error('Excel files cannot be read here right now. Save the sheet as CSV and choose that instead.');
         setImport([{ name: file.name, rows: G.parseCSV(await file.text()) }], file.name);
       } else {
@@ -1467,7 +1704,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     S.imp = null;
     S.msg.imp = `<span class="sub">Saving ${changed.length} players…</span>`;
     const ok = await persist(changed, removed);
-    S.msg.imp = ok ? `<span class="ok">Imported ${res.measurements} measurements for ${res.players.length} players.</span>` + (res.errors.length ? ` <span class="err">${res.errors.length} row${res.errors.length === 1 ? '' : 's'} skipped or incomplete.</span>` : '') : '';
+    S.msg.imp = ok ? `<span class="ok">Imported ${res.measurements} measurements and ${res.tests} test results for ${res.players.length} players.</span>` + (res.errors.length ? ` <span class="err">${res.errors.length} row${res.errors.length === 1 ? '' : 's'} skipped or incomplete.</span>` : '') : '';
     render();
   }
 
@@ -1493,6 +1730,9 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       const { error } = await store.sb.auth.resetPasswordForEmail(email, { redirectTo: location.href.split('#')[0] });
       S.msg = error ? { login: error.message } : { login: 'Check your email for a link to choose a new password.', loginOk: true }; return render();
     }
+    const pax = t.closest('[data-paxis]'); if (pax) { S.paxis = pax.dataset.paxis; return render(); }
+    const delT = t.closest('[data-del-t]');
+    if (delT) { const p = current(); p.tests = (p.tests || []).filter(x => G.iso(G.parseDate(x.date)) !== delT.dataset.delT); S.confirm = null; return persist([p]); }
     const delA = t.closest('[data-del-a]');
     if (delA) { const p = current(); p.assessments = p.assessments.filter(a => G.iso(G.parseDate(a.date)) !== delA.dataset.delA); S.confirm = null; return persist([p]); }
     if (t.closest('[data-del-p]')) { const id = S.playerId; S.players = S.players.filter(x => x.id !== id); S.playerId = null; S.confirm = null; return persist([], [id]); }
@@ -1531,9 +1771,9 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     if (fileB) {
       const k = fileB.dataset.file;
       const ok = k === 'xlsx' ? await offerFile(`growth-maturation-${stamp()}.xlsx`, workbook('all'))
-        : k === 'first' || k === 'follow' ? (window.XLSX ? await offerFile(`supermovers-${k === 'first' ? 'first-test' : 'test'}-template.xlsx`, workbook(k)) : false)
+        : k === 'first' || k === 'follow' || k === 'tests' ? (window.XLSX ? await offerFile(`supermovers-${k === 'first' ? 'first-test' : k === 'tests' ? 'test-results' : 'test'}-template.xlsx`, workbook(k)) : false)
         : await offerFile(`growth-maturation-${k === 'results' ? 'results' : 'measurements'}-${stamp()}.csv`, k === 'results' ? G.resultsCSV(filtered()) : G.rawCSV(S.players));
-      if (!ok && (k === 'first' || k === 'follow')) { const csv = G.toCSV(TEMPLATES[k]); try { await navigator.clipboard.writeText(csv); fileB.textContent = 'Template copied'; } catch (err) { const ta = $('#imp-text'); if (ta) { ta.value = csv; ta.focus(); ta.select(); } } }
+      if (!ok && (k === 'first' || k === 'follow' || k === 'tests')) { const csv = G.toCSV(TEMPLATES[k]); try { await navigator.clipboard.writeText(csv); fileB.textContent = 'Template copied'; } catch (err) { const ta = $('#imp-text'); if (ta) { ta.value = csv; ta.focus(); ta.select(); } } }
       return;
     }
     const copyB = t.closest('[data-copy]');
@@ -1565,6 +1805,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
   document.addEventListener('change', e => {
     const t = e.target;
     if (t.id === 'f-squad') { S.filter.squad = t.value; save(); render(); }
+    if (t.id === 'pm-metric') { S.metric = t.value; render(); }
     if (t.id === 'pick') { S.playerId = t.value; S.confirm = null; S.msg = {}; render(); }
     if (t.id === 'imp-file' && t.files[0]) readImportFile(t.files[0]);
     if (t.id === 'imp-sheet') { S.imp.sheet = +t.value; remapImport(); $('#imp-area').innerHTML = importArea(); }
