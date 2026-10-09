@@ -210,6 +210,10 @@ section.grid, div.grid { display: grid; }
 .pcell { white-space: nowrap; }
 .pbar { display: inline-block; width: 64px; height: 8px; border-radius: 4px; background: var(--surface-2); vertical-align: middle; margin-right: 6px; overflow: hidden; }
 .pbar i { display: block; height: 100%; background: var(--accent); border-radius: 4px; }
+
+.gauge { display: grid; gap: 6px; align-content: start; }
+.gauge .chart { min-height: 0; }
+.gauge p.sub { margin: 0; line-height: 1.45; }
 </style>
 </head>
 <body>
@@ -1321,6 +1325,56 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       <tbody>${sorted.map(p => `<tr class="click" data-pid="${esc(p.id)}" tabindex="0">${cols.map(col => `<td class="${col[4] ? 'n' : ''}">${col[3](p)}</td>`).join('')}</tr>`).join('') || `<tr><td colspan="${cols.length}" class="empty">No players match these filters.</td></tr>`}</tbody></table></div></section>`;
   }
 
+  // Half-circle gauge: coloured bands, a needle at the value, the value and its band underneath.
+  function gaugeChart(W, { min, max, bands, value, valueText, bandText, bandColor }) {
+    const r = Math.min(W / 2 - 14, 120), th = Math.max(14, r * 0.2), cx = W / 2, cy = r + th / 2 + 8, H = cy + 58;
+    const ang = v => Math.PI * (1 - (Math.max(min, Math.min(max, v)) - min) / (max - min));
+    const pt = (a, rr) => [cx + rr * Math.cos(a), cy - rr * Math.sin(a)];
+    let s = `<svg width="${W}" height="${H}" role="img" aria-label="${esc(valueText + ' ' + (bandText || ''))}">`;
+    for (const b of bands) {
+      const a0 = ang(b.from), a1 = ang(b.to); if (a0 - a1 < 1e-3) continue;
+      const [x0, y0] = pt(a0, r), [x1, y1] = pt(a1, r);
+      s += `<path d="M${x0} ${y0} A${r} ${r} 0 0 1 ${x1} ${y1}" fill="none" stroke="${b.color}" stroke-width="${th}" ${tipAttr(`<b>${esc(b.label)}</b>`)}/>`;
+      const [lx, ly] = pt((a0 + a1) / 2, r - th / 2 - 12);
+      if (W >= 240 && b.short) s += `<text x="${lx}" y="${ly + 4}" text-anchor="middle" class="gl">${esc(b.short)}</text>`;
+    }
+    for (const b of bands.slice(1)) { const [x0, y0] = pt(ang(b.from), r - th / 2), [x1, y1] = pt(ang(b.from), r + th / 2); s += `<line x1="${x0}" y1="${y0}" x2="${x1}" y2="${y1}" stroke="var(--surface)" stroke-width="2"/>`; }
+    if (value != null && isFinite(value)) {
+      const a = ang(value), [nx, ny] = pt(a, r + th / 2 + 2), [bx, by] = pt(a, r - th / 2 - 4);
+      s += `<line x1="${cx}" y1="${cy}" x2="${bx}" y2="${by}" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/><circle cx="${cx}" cy="${cy}" r="7" fill="var(--ink)"/>`;
+      s += `<line x1="${bx}" y1="${by}" x2="${nx}" y2="${ny}" stroke="var(--ink)" stroke-width="3" stroke-linecap="round"/>`;
+    }
+    s += `<text x="${cx}" y="${cy + 30}" text-anchor="middle" style="font:italic 800 24px var(--font-display);fill:var(--ink)">${esc(valueText)}</text>`;
+    if (bandText) s += `<text x="${cx}" y="${cy + 50}" text-anchor="middle" style="font:600 13px var(--font-body);fill:${bandColor || 'var(--ink-2)'}">${esc(bandText)}</text>`;
+    return s + '</svg>';
+  }
+  // Where the player sits now, in four gauges with a sentence each for parents.
+  function playerGauges(p) {
+    const l = p.latest || {}, st = S.settings;
+    if (!l.date) return '';
+    const cuts = st.statusCuts, tc = st.timingCuts, ht = st.heightTempo, wt = st.weightTempo;
+    const box = (id, title, body, note) => `<section class="panel gauge"><span class="label">${title}</span>${body}<p class="sub">${note}</p></section>`;
+    const missing = msg => `<div class="empty" style="min-height:120px">${esc(msg)}</div>`;
+    const status = l.pct != null ? chartSlot('g-status', W => gaugeChart(W, { min: 70, max: 100, value: l.pct, valueText: f(l.pct) + '%', bandText: l.status, bandColor: 'var(--ink)',
+      bands: [70, ...cuts].map((c, i) => ({ from: c, to: [...cuts, 100][i], color: STATUS_COL[i], label: G.STATUS[i], short: ['Pre', 'Appr.', 'Circa', 'Post'][i] })) })) : missing('Needs parents\' heights, height and weight.');
+    const yrs = Math.abs(l.baDiff || 0).toFixed(1);
+    const timing = l.baDiff != null ? chartSlot('g-timing', W => gaugeChart(W, { min: -2, max: 2, value: l.baDiff, valueText: sgn(l.baDiff) + ' yrs', bandText: l.timing,
+      bands: [[-2, -tc[1]], [-tc[1], -tc[0]], [-tc[0], tc[0]], [tc[0], tc[1]], [tc[1], 2]].map(([a, b], i) => ({ from: a, to: b, color: TIMING_COL[i], label: G.TIMING[i], short: ['Late', '', 'On time', '', 'Early'][i] })) })) : missing('Needs a height prediction first.');
+    const tempoBands = (cut, max) => [[0, cut[0]], [cut[0], cut[1]], [cut[1], max]].map(([a, b], i) => ({ from: a, to: b, color: TEMPO_COL[i], label: G.TEMPO[i], short: G.TEMPO[i] }));
+    const hv = p.hv != null ? chartSlot('g-hv', W => gaugeChart(W, { min: 0, max: 12, value: Math.max(0, p.hv), valueText: f(p.hv) + ' cm/yr', bandText: p.heightTempo + ' growth', bands: tempoBands(ht, 12) })) : missing('Needs two height measurements.');
+    const wv = p.wv != null ? chartSlot('g-wv', W => gaugeChart(W, { min: 0, max: 10, value: Math.max(0, p.wv), valueText: f(p.wv) + ' kg/yr', bandText: p.weightTempo + ' gain', bands: tempoBands(wt, 10) })) : missing('Needs two weight measurements.');
+    const statusNote = l.pct == null ? '' : l.statusIdx === 0 ? `Has reached ${f(l.pct)}% of predicted adult height. The biggest growth spurt is still ahead (it usually peaks around 91–92%).`
+      : l.statusIdx === 1 ? `Has reached ${f(l.pct)}% of predicted adult height and is heading into the main growth spurt.`
+      : l.statusIdx === 2 ? `Has reached ${f(l.pct)}% of predicted adult height: in or around the fastest growth. Coordination and aches can change for a while; training is adjusted to suit.`
+      : `Has reached ${f(l.pct)}% of predicted adult height: past the main growth spurt.`;
+    const timingNote = l.baDiff == null ? '' : l.timingIdx === 2 ? 'Maturing at about the same pace as most children the same age.'
+      : l.baDiff < 0 ? `Maturing later than most children the same age, by about ${yrs} years. Late developers often catch up and overtake; it is normal.`
+      : `Maturing earlier than most children the same age, by about ${yrs} years. Early size and strength can flatter performance for a while.`;
+    const hvNote = p.hv == null ? '' : `${f(p.hv)} cm a year over the last ${p.velDays} days. ${p.heightTempoIdx === 2 ? 'This is a fast growth phase, when growing pains and injury risk rise, so load is managed carefully.' : p.heightTempoIdx === 1 ? 'A steady rate of growth.' : 'Growing slowly at the moment.'}`;
+    const wvNote = p.wv == null ? '' : `${f(p.wv)} kg a year over the same period. ${p.weightTempoIdx === 2 ? 'Fast weight gain, usually alongside a growth spurt.' : p.weightTempoIdx === 1 ? 'A steady rate of weight gain.' : 'Little weight change at the moment.'}`;
+    return `<div class="grid4 gauges">${box('s', 'Maturity status', status, statusNote)}${box('t', 'Maturity timing', timing, timingNote)}${box('h', 'Height growth', hv, hvNote)}${box('w', 'Weight gain', wv, wvNote)}</div>`;
+  }
+
   function viewPlayer() {
     const all = filtered().length ? filtered() : profiles();
     if (!all.length) return `<div class="panel"><h2>No players yet</h2><p class="note">Add a player on the Record tab, import a spreadsheet on the Data tab, or use the calculator and choose "Add to squad".</p></div>`;
@@ -1414,7 +1468,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       <form id="edit-p" class="form-grid">${playerFields(p, 'e')}<div class="field" style="align-self:end"><button class="btn" type="submit">Save details</button></div></form>
       <p class="ok" role="status">${esc(S.msg.e || '')}</p></section>`;
 
-    return picker + head + cards + charts + hist + playerPerf(p) + `<div class="grid2">${addForm}${editForm}</div>`;
+    return picker + head + playerGauges(p) + cards + charts + hist + playerPerf(p) + `<div class="grid2">${addForm}${editForm}</div>`;
   }
 
   const playerFields = (p = {}, pre) => `
