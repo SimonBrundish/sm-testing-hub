@@ -839,12 +839,17 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       store.mode = 'local'; store.error = 'The sign-in service did not load, so data is only being kept in this browser. Check your connection and reload.';
       const saved = readLocal(); S.players = saved && Array.isArray(saved.players) ? saved.players : []; render(); return;
     }
+    // Invite and reset emails land here with #...&type=invite|recovery; the client reads and clears that hash, so check it first.
+    const linkType = ((location.hash || '').match(/[#&]type=(\w+)/) || [])[1];
+    if (linkType === 'invite' || linkType === 'recovery') S.recovery = linkType;
+    const linkErr = ((location.hash || '').match(/error_description=([^&]+)/) || [])[1];
+    if (linkErr) { S.msg = { login: decodeURIComponent(linkErr.replace(/\+/g, ' ')) + '. Use "Forgot your password?" below to get a fresh link.' }; history.replaceState(null, '', location.pathname + location.search); }
     const sb = store.sb = window.supabase.createClient(cfg.supabaseUrl, cfg.supabaseKey);
     store.mode = 'supa';
     // Tables are prefixed so they can share a Supabase project with other apps.
     store.t = { players: cfg.playersTable || 'gm_players', settings: cfg.settingsTable || 'gm_settings', coaches: cfg.coachesTable || 'gm_coaches' };
     sb.auth.onAuthStateChange((event, session) => {
-      if (event === 'PASSWORD_RECOVERY') S.recovery = true;
+      if (event === 'PASSWORD_RECOVERY') S.recovery = S.recovery || 'recovery';
       const was = store.user && store.user.id;
       store.user = session ? session.user : null;
       if (store.user && store.user.id !== was) loadSupabase();
@@ -887,7 +892,8 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     if (store.user && S.notCoach) return `<section class="panel" style="max-width:420px;margin:24px auto;width:100%"><h2>Not on the coach list</h2>
       <p class="sub" style="margin-top:4px">You are signed in as ${esc(store.user.email || '')}, but this account has not been given access to player data. Ask the academy to add you as a coach.</p>
       <button class="btn" id="sign-out" style="margin-top:14px">Sign out</button></section>`;
-    if (S.recovery) return `<section class="panel" style="max-width:420px;margin:24px auto;width:100%"><h2>Choose a new password</h2>
+    if (S.recovery && store.user) return `<section class="panel" style="max-width:420px;margin:24px auto;width:100%"><h2>${S.recovery === 'invite' ? 'Welcome, choose your password' : 'Choose a new password'}</h2>
+      <p class="sub" style="margin-top:4px">For ${esc(store.user.email || '')}. Use at least 8 characters.</p>
       <form id="newpw" style="display:grid;gap:12px;margin-top:14px"><label class="field"><span>New password</span><input type="password" id="np-pw" minlength="8" autocomplete="new-password" required></label>
       <button class="btn primary" type="submit">Save password</button><p class="err" role="status">${esc(S.msg.login || '')}</p></form></section>`;
     return `<section class="panel" style="max-width:420px;margin:24px auto;width:100%"><h2>Coach sign-in</h2>
@@ -1884,7 +1890,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     if (id === 'newpw' && store.sb) {
       const { error } = await store.sb.auth.updateUser({ password: $('#np-pw').value });
       if (error) { S.msg = { login: error.message }; return render(); }
-      S.recovery = false; S.msg = {}; return render();
+      S.recovery = false; S.msg = {}; loadSupabase(); return render();
     }
     if (id === 'add-a') {
       const p = current();
