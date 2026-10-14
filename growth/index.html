@@ -226,7 +226,7 @@ section.grid, div.grid { display: grid; }
 .chart .rq:focus-visible .rq-n { text-decoration: underline; }
 .dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
 .rmap th.c, .rmap td.c { text-align: center; }
-.rmap th.c { font-size: 12px; max-width: 90px; white-space: normal; }
+.rmap th.c { min-width: 64px; white-space: normal; }
 .rq-big { font: 700 44px/1 var(--font-display); color: var(--ink); margin-top: 6px; font-variant-numeric: tabular-nums; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
@@ -453,8 +453,43 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     { key: 'broadJump', label: 'Broad jump', unit: 'cm', d: 0, cat: 'Bounce' },
     { key: 'deadliftPower', label: 'TB deadlift power', unit: 'W', d: 0, cat: 'Strength' },
     { key: 'agility', label: 'Raducanu lateral agility', unit: 's', d: 2, cat: 'Agility', lower: true },
-    { key: 'pentagonRatio', label: 'Pentagon crawl ratio', unit: '', d: 2, cat: 'Crawl' }
+    { key: 'pentagonRatio', label: 'Pentagon crawl ratio', unit: '', d: 2, cat: 'Crawl' },
+    // READER battery (Howard's testing sheet). Ratios and deficits are worked out from the raw results when not entered.
+    { key: 'sprint5', label: '5m sprint', unit: 's', d: 2, cat: 'Speed', lower: true },
+    { key: 'codL', label: 'COD left', unit: 's', d: 2, cat: 'Change of direction', lower: true },
+    { key: 'codR', label: 'COD right', unit: 's', d: 2, cat: 'Change of direction', lower: true },
+    { key: 'coddL', label: 'COD deficit left', unit: 's', d: 2, cat: 'Change of direction', lower: true, derive: v => v.codL != null && v.sprint10 != null ? v.codL - v.sprint10 : null },
+    { key: 'coddR', label: 'COD deficit right', unit: 's', d: 2, cat: 'Change of direction', lower: true, derive: v => v.codR != null && v.sprint10 != null ? v.codR - v.sprint10 : null },
+    { key: 'star', label: 'Star drill', unit: 's', d: 2, cat: 'Change of direction', lower: true },
+    { key: 'star3L', label: 'Star 3 left', unit: 's', d: 2, cat: 'Change of direction', lower: true },
+    { key: 'star3R', label: 'Star 3 right', unit: 's', d: 2, cat: 'Change of direction', lower: true },
+    { key: 'hopL', label: 'Hop left', unit: 'cm', d: 0, cat: 'Horizontal' },
+    { key: 'hopR', label: 'Hop right', unit: 'cm', d: 0, cat: 'Horizontal' },
+    { key: 'hop3L', label: 'Triple hop left', unit: 'cm', d: 0, cat: 'Horizontal' },
+    { key: 'hop3R', label: 'Triple hop right', unit: 'cm', d: 0, cat: 'Horizontal' },
+    { key: 'bjRel', label: 'Broad jump / height', unit: '', d: 2, cat: 'Horizontal', derive: (v, h) => v.broadJump != null && h > 0 ? v.broadJump / h : null },
+    { key: 'hopLRel', label: 'Hop left / height', unit: '', d: 2, cat: 'Horizontal', derive: (v, h) => v.hopL != null && h > 0 ? v.hopL / h : null },
+    { key: 'hopRRel', label: 'Hop right / height', unit: '', d: 2, cat: 'Horizontal', derive: (v, h) => v.hopR != null && h > 0 ? v.hopR / h : null },
+    { key: 'hop3LRel', label: 'Triple hop left / height', unit: '', d: 2, cat: 'Horizontal', derive: (v, h) => v.hop3L != null && h > 0 ? v.hop3L / h : null },
+    { key: 'hop3RRel', label: 'Triple hop right / height', unit: '', d: 2, cat: 'Horizontal', derive: (v, h) => v.hop3R != null && h > 0 ? v.hop3R / h : null },
+    { key: 'sj', label: 'Squat jump', unit: 'cm', d: 1, cat: 'Bounce' },
+    { key: 'cmjFree', label: 'CMJ free arms', unit: 'cm', d: 1, cat: 'Bounce' },
+    { key: 'eur', label: 'Eccentric utilisation ratio', unit: '', d: 2, cat: 'Bounce', derive: v => v.cmj != null && v.sj > 0 ? v.cmj / v.sj : null },
+    { key: 'rsi105', label: '10/5 RSI', unit: '', d: 2, cat: 'Bounce' },
+    { key: 'drop30', label: 'Drop jump 30 cm', unit: '', d: 2, cat: 'Bounce' },
+    { key: 'drop40', label: 'Drop jump 40 cm', unit: '', d: 2, cat: 'Bounce' },
+    { key: 'dropDeficit', label: 'Drop jump deficit', unit: '', d: 2, cat: 'Bounce', lower: true },
+    { key: 'tbForceBW', label: 'Trap bar force at body weight', unit: '', d: 2, cat: 'Strength' },
+    { key: 'ballThrow', label: 'Rotational med ball throw', unit: '', d: 1, cat: 'Throw' },
+    { key: 'ift3015', label: '30-15 IFT', unit: 'km/h', d: 1, cat: 'Repeat' },
+    { key: 'borthwick', label: 'Borthwick COD drill', unit: 's', d: 2, cat: 'Repeat', lower: true }
   ];
+  // Ratios and deficits are worked out from the raw results whenever those are there, so they always agree.
+  function withDerived(vals, height) {
+    const v = { ...vals };
+    for (const m of METRICS) if (m.derive) { const x = m.derive(v, height); if (x != null && isFinite(x)) v[m.key] = +x.toFixed(4); }
+    return v;
+  }
   // Norms come from other players' tests (any date) near the same age: a straight line fitted within ±window years,
   // widened once if too few, and the score's distance from that line in standard deviations.
   const NORMS = { window: 1.5, wide: 2.5, minPlayers: 4, minTests: 8, sameSex: true };
@@ -487,7 +522,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
         const size = sizeAt(p.history || [], t.date, t.height);
         const m = size ? assess(p, { date: t.date, height: size.height, mass: size.mass }, s) : null;
         out.push({ pid: p.id, name: p.name, sex: p.sex, squad: p.squad, date: iso(parseDate(t.date)), t: parseDate(t.date).getTime(), ca: decimalAge(p.dob, t.date),
-          ba: m && m.ba != null ? m.ba : null, pct: m ? m.pct : null, statusIdx: m ? m.statusIdx : null, timingIdx: m ? m.timingIdx : null, baDiff: m ? m.baDiff : null, vals: t });
+          ba: m && m.ba != null ? m.ba : null, pct: m ? m.pct : null, statusIdx: m ? m.statusIdx : null, timingIdx: m ? m.timingIdx : null, baDiff: m ? m.baDiff : null, vals: withDerived(t, t.height > 0 ? t.height : size ? size.height : null) });
       }
     }
     return out;
@@ -516,21 +551,39 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     return { players: new Set(pool.map(r => r.pid)).size, pct: null };
   }
 
+  // Fallback when there are too few players of a similar age: rank against every other player's latest result
+  // for the test (same sex where both are known), ignoring age.
+  function percentileInGroup(records, rec, metric, minPlayers = 3) {
+    const v = rec.vals[metric.key]; if (typeof v !== 'number' || !isFinite(v)) return null;
+    const latest = new Map();
+    for (const r of records) {
+      if (r.pid === rec.pid || typeof r.vals[metric.key] !== 'number' || !isFinite(r.vals[metric.key])) continue;
+      if (rec.sex && r.sex && r.sex !== rec.sex) continue;
+      if (!latest.has(r.pid) || latest.get(r.pid).t < r.t) latest.set(r.pid, r);
+    }
+    const others = [...latest.values()].map(r => r.vals[metric.key]), n = others.length;
+    if (n < minPlayers) return { players: n, pct: null };
+    const worse = others.filter(x => metric.lower ? x > v : x < v).length, ties = others.filter(x => x === v).length;
+    return { players: n, tests: n, group: true, pct: 100 * (worse + 0.5 * ties) / n };
+  }
+
   // ---- READER profile (Howard's tennis athlete model) ----
   // Each quality scores 0–10: the mean percentile of the tests mapped to it, divided by 10.
   // Which tests feed which quality is a coach setting (settings.reader) because it is still being decided.
   const READER_DEFAULT = [
     { key: 'r', letter: 'R', name: '', tests: [] },
-    { key: 'explode', letter: 'E', name: 'Explode', tests: ['cmj', 'slcmj', 'deadliftPower'] },
-    { key: 'accelerate', letter: 'A', name: 'Accelerate', tests: ['sprint10', 'broadJump', 'deadliftPower'] },
-    { key: 'decelerate', letter: 'D', name: 'Decelerate', tests: ['agility', 'slcmj'] },
-    { key: 'execute', letter: 'E', name: 'Execute', tests: ['pentagonRatio'] },
-    { key: 'recover', letter: 'R', name: 'Recover & Repeat', tests: ['agility'] }
+    // Howard and Simon's table (14 Oct 2026). Left/right tests both count; jumps and hops relative to height.
+    { key: 'explode', letter: 'E', name: 'Explode', tests: ['cmj', 'rsi105', 'slcmj', 'tbForceBW'] },
+    { key: 'accelerate', letter: 'A', name: 'Accelerate', tests: ['sprint5', 'sprint10', 'star', 'bjRel', 'hopLRel', 'hopRRel'] },
+    { key: 'decelerate', letter: 'D', name: 'Decelerate', tests: ['hop3LRel', 'hop3RRel', 'codL', 'codR', 'dropDeficit'] },
+    { key: 'execute', letter: 'E', name: 'Execute', tests: ['ballThrow'] },
+    { key: 'recover', letter: 'R', name: 'Recover & Repeat', tests: ['star', 'ift3015', 'borthwick'] }
   ];
   const READER_RANKS = ['Primary', 'Secondary', 'Tertiary'];
   const readerQualities = s => (s && Array.isArray(s.reader) && s.reader.length ? s.reader : READER_DEFAULT);
   // A player's READER profile from their latest result for each test on or before `asOf` (ms; null = all).
-  // Percentiles are by maturity (axis 'ba') or by age ('ca'); a test with no maturity estimate falls back to age.
+  // Percentiles are by maturity (axis 'ba') or by age ('ca'); a test with no maturity estimate falls back to age,
+  // and one with too few players of a similar age falls back to the whole group.
   function readerProfile(records, pid, qualities, axis = 'ba', asOf = null) {
     const mine = records.filter(r => r.pid === pid && (asOf == null || r.t <= asOf)).sort((a, b) => b.t - a.t);
     if (!mine.length) return null;
@@ -542,6 +595,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       if (!rec) return cache[key] = { metric, rec: null, pct: null };
       let p = percentileAmong(records, rec, metric, axis), used = axis;
       if ((!p || p.pct == null) && axis === 'ba') { p = percentileAmong(records, rec, metric, 'ca'); used = 'ca'; }
+      if (!p || p.pct == null) { p = percentileInGroup(records, rec, metric); used = 'group'; }
       return cache[key] = { metric, rec, pr: p, pct: p && p.pct != null ? p.pct : null, axis: used };
     };
     const qualities_ = qualities.map(q => {
@@ -590,17 +644,33 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     squad: ['squad', 'group', 'team', 'age group', 'agegroup', 'year group', 'cohort'],
     mother: ['mother_height_cm', 'mother height', "mother's height", 'mothers height', 'mothers height (cm)', "mother's height (cm)", 'mother', 'mum height', 'mother height (cm)'],
     father: ['father_height_cm', 'father height', "father's height", 'fathers height', 'fathers height (cm)', "father's height (cm)", 'father', 'dad height', 'father height (cm)'],
-    date: ['date', 'test date', 'testing date', 'assessment date', 'test_date', 'last assessment', 'measurement date', 'date of test'],
+    date: ['date', 'test date', 'testing date', 'assessment date', 'test_date', 'last assessment', 'measurement date', 'date of test', 'period', 'testing period'],
     height: ['height_cm', 'height', 'hieght', 'heigth', 'height cm', 'standing height (cm)', 'standing height', 'height (cm)', 'stature', 'stature (cm)'],
     mass: ['mass_kg', 'mass', 'weight kg', 'wieght', 'weight_kg', 'body mass (kg)', 'body mass', 'weight', 'weight (kg)', 'body weight', 'body weight (kg)', 'mass (kg)'],
     sprint10: ['sprint10', '10m sprint', '10 m sprint', '10m', 'sprint 10', 'sprint 10m', '10m sprint (s)', '10m sprint time'],
     fly30: ['fly30', '30m fly', '30 m fly', 'fly 30', '30m flying sprint', 'flying 30', '30m fly (s)'],
     cmj: ['cmj', 'cmj (cm)', 'countermovement jump', 'counter movement jump', 'cmj height'],
     slcmj: ['slcmj', 'single-leg cmj', 'single leg cmj', 'sl cmj', 'single-leg cmj (cm)', 'single leg cmj (cm)'],
-    broadJump: ['broadjump', 'broad jump', 'broad jump (cm)', 'standing long jump', 'standing broad jump'],
+    broadJump: ['broadjump', 'bj', 'broad jump', 'broad jump (cm)', 'standing long jump', 'standing broad jump'],
     deadliftPower: ['deadliftpower', 'tb deadlift power', 'tb deadlift power (w)', 'trap bar deadlift power', 'deadlift power', 'deadlift power (w)'],
     agility: ['agility', 'raducanu lateral agility', 'raducanu lateral agility (s)', 'lateral agility', 'agility (s)'],
-    pentagonRatio: ['pentagonratio', 'pentagon crawl ratio', 'pentagon ratio', 'pentagon crawl', 'crawl ratio']
+    pentagonRatio: ['pentagonratio', 'pentagon crawl ratio', 'pentagon ratio', 'pentagon crawl', 'crawl ratio'],
+    sprint5: ['sprint5', '5m', '5m sprint', '5 m sprint', '5m split', 'sprint 5m'],
+    codL: ['codl', 'cod l', 'cod left', 'cod (l)'], codR: ['codr', 'cod r', 'cod right', 'cod (r)'],
+    coddL: ['coddl', 'codd l', 'cod deficit l', 'cod deficit left'], coddR: ['coddr', 'codd r', 'cod deficit r', 'cod deficit right'],
+    star: ['star', 'star drill', 'star (s)'], star3L: ['star3l', 'star 3l', 'star 3 l', 'star 3 left'], star3R: ['star3r', 'star 3r', 'star 3 r', 'star 3 right'],
+    hopL: ['hopl', 'hop l', 'hop left', 'single hop l', 'single leg hop l'], hopR: ['hopr', 'hop r', 'hop right', 'single hop r', 'single leg hop r'],
+    hop3L: ['hop3l', '3 hop l', '3hop l', 'triple hop l', 'triple hop left', '3 hop left'], hop3R: ['hop3r', '3 hop r', '3hop r', 'triple hop r', 'triple hop right', '3 hop right'],
+    bjRel: ['bjrel', 'bj / height', 'bj/height', 'broad jump / height', 'broad jump relative to height'],
+    hopLRel: ['hoplrel', 'hop l / height', 'hop l/height'], hopRRel: ['hoprrel', 'hop r / height', 'hop r/height'],
+    hop3LRel: ['hop3lrel', '3hl / height', '3hl/height', '3 hop l / height'], hop3RRel: ['hop3rrel', '3hr / height', '3hr/height', '3 hop r / height'],
+    sj: ['sj', 'squat jump', 'sj (cm)'], cmjFree: ['cmjfree', 'cmj free', 'cmj free arms', 'cmj (free arms)'], eur: ['eur', 'eccentric utilisation ratio', 'eccentric utilization ratio'],
+    rsi105: ['rsi105', '10-5 rsi', '10/5 rsi', '10-5', 'rsi 10/5', 'rsi'], drop30: ['drop30', 'drop 30', 'drop jump 30', 'dj 30'], drop40: ['drop40', 'drop 40', 'drop jump 40', 'dj 40'],
+    dropDeficit: ['dropdeficit', 'drop jump deficit', 'drop deficit', 'dj deficit'],
+    tbForceBW: ['tbforcebw', 'trapbar force at bw', 'trap bar force at bw', 'trap bar force at body weight', 'tb force at bw', 'tb force'],
+    ift3015: ['ift3015', '30-15', '30-15 ift', '30 15', '30:15', '30-15 vift', 'vift'],
+    borthwick: ['borthwick', 'borthwick cod', 'borthwick cod drill', 'borthwick drill'],
+    ballThrow: ['ballthrow', 'ball throw', 'rotational med ball', 'rotational med ball throw', 'med ball throw', 'medicine ball throw', 'rotational throw']
   };
   const normHead = h => String(h ?? '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[’`]/g, "'");
 
@@ -680,7 +750,8 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       if (!p.squad && str('squad')) p.squad = str('squad');
       const date = parseDate(g('date')), h = heightCm(g('height')), m = num(g('mass'));
       const scores = {};
-      for (const mt of METRICS) { const v = map[mt.key] >= 0 ? num(g(mt.key)) : null; if (v != null) scores[mt.key] = v; }
+      // A spreadsheet formula over a blank cell gives 0 (e.g. Hop L / Height with no hop), so a 0 ratio counts as not tested.
+      for (const mt of METRICS) { const v = map[mt.key] >= 0 ? num(g(mt.key)) : null; if (v != null && !(mt.derive && v === 0)) scores[mt.key] = v; }
       const hasScores = Object.keys(scores).length > 0;
       if (date && h > 0 && m > 0) {
         p.assessments = p.assessments.filter(a => a.date !== iso(date)).concat({ date: iso(date), height: h, mass: m });
@@ -755,7 +826,13 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
   const DEMO_PERF = {
     sprint10: { a: 2.05, b: -0.055, boy: -0.02, sd: 0.09 }, fly30: { a: 4.05, b: -0.12, boy: -0.04, sd: 0.17 },
     cmj: { a: 27, b: 2.4, boy: 1.2, sd: 3.5 }, slcmj: { a: 19, b: 1.7, boy: 0.8, sd: 2.6 }, broadJump: { a: 152, b: 9, boy: 4, sd: 11 },
-    deadliftPower: { a: 300, b: 70, boy: 30, sd: 55 }, agility: { a: 5.2, b: -0.18, boy: -0.05, sd: 0.3 }, pentagonRatio: { a: 5.2, b: 0.15, boy: 0, sd: 0.4 }
+    deadliftPower: { a: 300, b: 70, boy: 30, sd: 55 }, agility: { a: 5.2, b: -0.18, boy: -0.05, sd: 0.3 }, pentagonRatio: { a: 5.2, b: 0.15, boy: 0, sd: 0.4 },
+    sprint5: { a: 1.17, b: -0.03, boy: -0.01, sd: 0.06 }, codL: { a: 2.6, b: -0.06, boy: -0.02, sd: 0.1 }, codR: { a: 2.6, b: -0.06, boy: -0.02, sd: 0.1 },
+    star: { a: 17.3, b: -0.4, boy: -0.15, sd: 0.7 }, star3L: { a: 11.6, b: -0.25, boy: -0.1, sd: 0.5 }, star3R: { a: 11.6, b: -0.25, boy: -0.1, sd: 0.5 },
+    hopL: { a: 148, b: 8, boy: 4, sd: 12 }, hopR: { a: 148, b: 8, boy: 4, sd: 12 }, hop3L: { a: 450, b: 25, boy: 12, sd: 35 }, hop3R: { a: 450, b: 25, boy: 12, sd: 35 },
+    sj: { a: 24, b: 2.1, boy: 1.1, sd: 3.2 }, cmjFree: { a: 30, b: 2.6, boy: 1.3, sd: 3.8 }, rsi105: { a: 1.1, b: 0.06, boy: 0.03, sd: 0.15 },
+    drop30: { a: 1.2, b: 0.07, boy: 0.03, sd: 0.18 }, drop40: { a: 1.15, b: 0.07, boy: 0.03, sd: 0.18 }, ballThrow: { a: 22, b: 2.5, boy: 1.5, sd: 3 },
+    dropDeficit: { a: 0.25, b: -0.01, boy: 0, sd: 0.08 }, tbForceBW: { a: 1.9, b: 0.06, boy: 0.03, sd: 0.2 }, ift3015: { a: 15.5, b: 0.5, boy: 0.3, sd: 1 }, borthwick: { a: 21, b: -0.5, boy: -0.2, sd: 1 }
   };
   function demoSquad(today = new Date()) {
     let seed = 20261003;
@@ -796,6 +873,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
           // Test scores track biological more than chronological age, plus a stable individual level.
           const sc = { date: iso(d) };
           METRICS.forEach((m, k) => {
+            if (m.derive) return;
             const g = DEMO_PERF[m.key], z = talent + spread[k] + gauss() * 0.35, boy = sex === 'M' ? Math.max(0, ba - 13) * g.boy : 0;
             const v = g.a + g.b * (ba - 12) + boy + (m.lower ? -1 : 1) * z * g.sd;
             sc[m.key] = +v.toFixed(m.d);
@@ -808,7 +886,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     return players;
   }
 
-  const api = { READER_DEFAULT, READER_RANKS, readerQualities, readerProfile, testingHubRows, testRows, METRICS, NORMS, sizeAt, testRecords, percentileAmong, DEFAULT_SETTINGS, STATUS, TIMING, TEMPO, CI, parseDate, iso, decimalAge, daysBetween, biologicalAge, midparentCm, predictAdultHeight, ciFor, assess, velocity, profile, parseCSV, playersFromCSV, playersFromRows, detectHeader, autoMap, FIELDS, heightCm, rawCSV, resultsCSV, rawRows, resultsRows, toCSV, demoSquad, interpRef };
+  const api = { withDerived, percentileInGroup, READER_DEFAULT, READER_RANKS, readerQualities, readerProfile, testingHubRows, testRows, METRICS, NORMS, sizeAt, testRecords, percentileAmong, DEFAULT_SETTINGS, STATUS, TIMING, TEMPO, CI, parseDate, iso, decimalAge, daysBetween, biologicalAge, midparentCm, predictAdultHeight, ciFor, assess, velocity, profile, parseCSV, playersFromCSV, playersFromRows, detectHeader, autoMap, FIELDS, heightCm, rawCSV, resultsCSV, rawRows, resultsRows, toCSV, demoSquad, interpRef };
   root.GM = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -1166,7 +1244,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     return s + '</svg>';
   }
   const pctTxt = r => r && r.pct != null ? (r.pct < 1 ? '<1' : r.pct > 99 ? '>99' : Math.round(r.pct)) : '—';
-  const pctBar = r => r && r.pct != null ? `<span class="pbar" ${tipAttr(`Better than about ${pctTxt(r)}% of players at that age<br>Compared with ${r.tests} tests from ${r.players} other players`)}><i style="width:${Math.max(2, r.pct)}%"></i></span><span class="num">${pctTxt(r)}</span>` : `<span class="sub" ${r ? tipAttr(`Not enough comparison data yet (${r.players} other player${r.players === 1 ? '' : 's'})`) : ''}>—</span>`;
+  const pctBar = r => r && r.pct != null ? `<span class="pbar" ${tipAttr(r.group ? `Better than about ${pctTxt(r)}% of the other ${r.players} players tested, at any age` : `Better than about ${pctTxt(r)}% of players at that age<br>Compared with ${r.tests} tests from ${r.players} other players`)}><i style="width:${Math.max(2, r.pct)}%"></i></span><span class="num">${pctTxt(r)}</span>` : `<span class="sub" ${r ? tipAttr(`Not enough comparison data yet (${r.players} other player${r.players === 1 ? '' : 's'})`) : ''}>—</span>`;
   const fmtVal = (m, v) => typeof v === 'number' ? v.toFixed(m.d) + (m.unit ? ' ' + m.unit : '') : '—';
   const metricSelect = () => `<label class="field" style="width:230px"><span>Test</span><select id="pm-metric">${[...new Set(G.METRICS.map(m => m.cat))].map(c => `<optgroup label="${esc(c)}">${G.METRICS.filter(m => m.cat === c).map(m => `<option value="${m.key}" ${S.metric === m.key ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</optgroup>`).join('')}</select></label>`;
   // Latest result per player for a metric, with both percentiles.
@@ -1234,13 +1312,13 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       const a = G.percentileAmong(R, r, m, 'ca'), b = G.percentileAmong(R, r, m, 'ba');
       return `<tr><td><b>${esc(m.label)}</b> <span class="sub">${esc(m.cat)}</span></td><td>${fmtDate(r.date)}</td><td class="n">${fmtVal(m, r.vals[m.key])}</td><td class="pcell">${pctBar(a)}</td><td class="pcell">${pctBar(b)}</td><td class="n">${a?.pct != null && b?.pct != null ? sgn(Math.round(b.pct) - Math.round(a.pct), 0) : '—'}</td></tr>`;
     }).join('');
-    const conf = S.confirm;
+    const conf = S.confirm, MS = G.METRICS.filter(m => mine.some(r => typeof r.vals[m.key] === 'number'));
     const hist = mine.map(r => { const k = 'del-t:' + r.date;
-      return `<tr><td>${fmtDate(r.date)}</td><td class="n">${f(r.ca, 1)}</td><td class="n">${f(r.ba, 1)}</td>${G.METRICS.map(m => `<td class="n">${typeof r.vals[m.key] === 'number' ? r.vals[m.key].toFixed(m.d) : '—'}</td>`).join('')}
+      return `<tr><td>${fmtDate(r.date)}</td><td class="n">${f(r.ca, 1)}</td><td class="n">${f(r.ba, 1)}</td>${MS.map(m => `<td class="n">${typeof r.vals[m.key] === 'number' ? r.vals[m.key].toFixed(m.d) : '—'}</td>`).join('')}
         <td>${conf === k ? `<span class="confirm"><button class="btn small danger" data-del-t="${esc(r.date)}">Delete</button><button class="btn small" data-cancel>Keep</button></span>` : `<button class="btn small" data-ask="${esc(k)}">Remove</button>`}</td></tr>`; }).join('');
     return `<section class="panel"><div class="panel-head"><div><h3>Performance tests</h3><p class="sub">Latest result for each test. Percentile 100 = best, against players the same age and against players at the same stage of growth.</p></div><button class="btn small tab-link" data-goto="perf">Squad view</button></div>
       <div class="table-wrap"><table><thead><tr><th>Test</th><th>Tested</th><th class="n">Result</th><th>By age</th><th>By maturity</th><th class="n">Change</th></tr></thead><tbody>${rows}</tbody></table></div></section>
-      <section class="grid" style="gap:10px"><h3>Test history</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th class="n">Age</th><th class="n">Bio age</th>${G.METRICS.map(m => `<th class="n">${esc(m.label)}${m.unit ? ` <span class="sub">${esc(m.unit)}</span>` : ''}</th>`).join('')}<th></th></tr></thead><tbody>${hist}</tbody></table></div></section>`;
+      <section class="grid" style="gap:10px"><h3>Test history</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th class="n">Age</th><th class="n">Bio age</th>${MS.map(m => `<th class="n">${esc(m.label)}${m.unit ? ` <span class="sub">${esc(m.unit)}</span>` : ''}</th>`).join('')}<th></th></tr></thead><tbody>${hist}</tbody></table></div></section>`;
   }
 
   // ---------- READER profile ----------
@@ -1292,7 +1370,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     const lg = `<div class="legend"><span><i style="background:var(--accent)"></i>Latest tests</span>${series.some(x => x.name === 'Previous tests') ? `<span><i style="background:var(--muted)"></i>Previous tests (${fmtDate(G.iso(new Date(prev.t)))})</span>` : ''}${hasSelf ? '<span><i style="background:var(--sm-orange)"></i>Athlete\'s own rating</span>' : ''}</div>`;
 
     const q = qs.find(x => x.key === sel), pq = prev && prev.qualities.find(x => x.key === sel);
-    const rows = q.tests.map(x => `<tr><td><b>${esc(x.metric.label)}</b></td><td>${x.rec ? fmtDate(x.rec.date) : '—'}</td><td class="n">${x.rec ? fmtVal(x.metric, x.rec.vals[x.metric.key]) : '—'}</td><td class="pcell">${x.rec ? pctBar(x.pr) : '<span class="sub">Not tested yet</span>'}</td><td>${x.rec && x.axis !== axis ? '<span class="sub">by age</span>' : ''}</td></tr>`).join('');
+    const rows = q.tests.map(x => `<tr><td><b>${esc(x.metric.label)}</b></td><td>${x.rec ? fmtDate(x.rec.date) : '—'}</td><td class="n">${x.rec ? fmtVal(x.metric, x.rec.vals[x.metric.key]) : '—'}</td><td class="pcell">${x.rec ? pctBar(x.pr) : '<span class="sub">Not tested yet</span>'}</td><td>${x.rec && x.axis !== axis ? `<span class="sub">${x.axis === 'group' ? 'whole group' : 'by age'}</span>` : ''}</td></tr>`).join('');
     const gap = typeof self[sel] === 'number' && q.score != null ? self[sel] - q.score : null;
     const detail = `<div class="grid" style="gap:10px;align-content:start">
       <div><span class="label">${esc(q.letter)} · ${esc(qLabel(q))}</span>
@@ -1326,9 +1404,9 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     const Q = G.readerQualities(S.settings);
     return `<section class="panel"><div class="panel-head"><div><h3>READER tests</h3><p class="sub">Name each letter and tick the tests that make up its score. A test can count towards more than one letter.</p></div></div>
       <form id="reader-map" class="grid" style="gap:12px">
-      <div class="table-wrap"><table class="rmap"><thead><tr><th>Letter</th><th>Name</th>${G.METRICS.map(m => `<th class="c">${esc(m.label)}</th>`).join('')}</tr></thead><tbody>
-      ${Q.map((q, i) => `<tr><td><b>${esc(q.letter)}</b></td><td><input type="text" data-rname="${i}" value="${esc(q.name)}" placeholder="Name this letter" style="min-width:140px"></td>
-        ${G.METRICS.map(m => `<td class="c"><input type="checkbox" data-rtest="${i}" value="${m.key}" ${q.tests.includes(m.key) ? 'checked' : ''} aria-label="${esc(m.label)} counts towards ${esc(q.letter)}"></td>`).join('')}</tr>`).join('')}
+      <div class="form-grid">${Q.map((q, i) => `<label class="field"><span>${esc(q.letter)}</span><input type="text" data-rname="${i}" value="${esc(q.name)}" placeholder="Name this letter"></label>`).join('')}</div>
+      <div class="table-wrap"><table class="rmap"><thead><tr><th>Test</th>${Q.map(q => `<th class="c">${esc(q.letter)}<br><span class="sub">${esc(q.name || '—')}</span></th>`).join('')}</tr></thead><tbody>
+      ${G.METRICS.map(m => `<tr><td>${esc(m.label)}${m.derive ? ' <span class="sub">worked out</span>' : ''}</td>${Q.map((q, i) => `<td class="c"><input type="checkbox" data-rtest="${i}" value="${m.key}" ${q.tests.includes(m.key) ? 'checked' : ''} aria-label="${esc(m.label)} counts towards ${esc(q.letter + ' ' + (q.name || ''))}"></td>`).join('')}</tr>`).join('')}
       </tbody></table></div>
       <div class="bar"><button class="btn primary" type="submit">Save READER tests</button><button class="btn" type="button" id="reader-reset">Back to the starting mapping</button><span class="ok" role="status">${esc(S.msg.rm || '')}</span></div></form></section>`;
   }
