@@ -214,6 +214,19 @@ section.grid, div.grid { display: grid; }
 .gauge { display: grid; gap: 6px; align-content: start; }
 .gauge .chart { min-height: 0; }
 .gauge p.sub { margin: 0; line-height: 1.45; }
+
+/* READER radar */
+.reader .rq { cursor: pointer; outline: none; }
+.chart .reader-x, .chart .rq-l { fill: var(--ink); font: 700 18px var(--font-display); letter-spacing: .02em; }
+.chart .rq-n { fill: var(--ink-2); font: 500 12px var(--font-body); letter-spacing: 0; }
+.chart .rq-s { fill: var(--muted); font: 12px var(--font-body); }
+.chart .rq:hover .rq-l, .chart .rq:focus-visible .rq-l, .chart .rq.on .rq-l { fill: var(--sm-red); }
+.chart .rq.on .rq-n { fill: var(--ink); font-weight: 600; }
+.chart .rq:focus-visible .rq-n { text-decoration: underline; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.rmap th.c, .rmap td.c { text-align: center; }
+.rmap th.c { font-size: 12px; max-width: 90px; white-space: normal; }
+.rq-big { font: 700 44px/1 var(--font-display); color: var(--ink); margin-top: 6px; font-variant-numeric: tabular-nums; }
 </style>
 </head>
 <body>
@@ -500,6 +513,44 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     return { players: new Set(pool.map(r => r.pid)).size, pct: null };
   }
 
+  // ---- READER profile (Howard's tennis athlete model) ----
+  // Each quality scores 0–10: the mean percentile of the tests mapped to it, divided by 10.
+  // Which tests feed which quality is a coach setting (settings.reader) because it is still being decided.
+  const READER_DEFAULT = [
+    { key: 'r', letter: 'R', name: '', tests: [] },
+    { key: 'explode', letter: 'E', name: 'Explode', tests: ['cmj', 'slcmj', 'deadliftPower'] },
+    { key: 'accelerate', letter: 'A', name: 'Accelerate', tests: ['sprint10', 'broadJump', 'deadliftPower'] },
+    { key: 'decelerate', letter: 'D', name: 'Decelerate', tests: ['agility', 'slcmj'] },
+    { key: 'execute', letter: 'E', name: 'Execute', tests: ['pentagonRatio'] },
+    { key: 'recover', letter: 'R', name: 'Recover & Repeat', tests: ['agility'] }
+  ];
+  const READER_RANKS = ['Primary', 'Secondary', 'Tertiary'];
+  const readerQualities = s => (s && Array.isArray(s.reader) && s.reader.length ? s.reader : READER_DEFAULT);
+  // A player's READER profile from their latest result for each test on or before `asOf` (ms; null = all).
+  // Percentiles are by maturity (axis 'ba') or by age ('ca'); a test with no maturity estimate falls back to age.
+  function readerProfile(records, pid, qualities, axis = 'ba', asOf = null) {
+    const mine = records.filter(r => r.pid === pid && (asOf == null || r.t <= asOf)).sort((a, b) => b.t - a.t);
+    if (!mine.length) return null;
+    const cache = {};
+    const testScore = key => {
+      if (cache[key]) return cache[key];
+      const metric = METRICS.find(x => x.key === key);
+      const rec = metric ? mine.find(x => typeof x.vals[key] === 'number' && isFinite(x.vals[key])) : null;
+      if (!rec) return cache[key] = { metric, rec: null, pct: null };
+      let p = percentileAmong(records, rec, metric, axis), used = axis;
+      if ((!p || p.pct == null) && axis === 'ba') { p = percentileAmong(records, rec, metric, 'ca'); used = 'ca'; }
+      return cache[key] = { metric, rec, pr: p, pct: p && p.pct != null ? p.pct : null, axis: used };
+    };
+    const qualities_ = qualities.map(q => {
+      const tests = (q.tests || []).map(testScore).filter(x => x.metric);
+      const got = tests.filter(x => x.pct != null);
+      return { ...q, tests, n: got.length, score: got.length ? got.reduce((a, x) => a + x.pct, 0) / got.length / 10 : null };
+    });
+    const used = qualities_.flatMap(q => q.tests.filter(x => x.rec).map(x => x.rec.t));
+    const ranked = qualities_.filter(q => q.score != null).sort((a, b) => a.score - b.score);
+    return { t: used.length ? Math.max(...used) : mine[0].t, qualities: qualities_, priorities: ranked.slice(0, 3).map(q => q.key) };
+  }
+
   // ---- CSV ----
   function parseCSV(text) {
     const rows = []; let row = [], cell = '', q = false;
@@ -754,7 +805,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     return players;
   }
 
-  const api = { testingHubRows, testRows, METRICS, NORMS, sizeAt, testRecords, percentileAmong, DEFAULT_SETTINGS, STATUS, TIMING, TEMPO, CI, parseDate, iso, decimalAge, daysBetween, biologicalAge, midparentCm, predictAdultHeight, ciFor, assess, velocity, profile, parseCSV, playersFromCSV, playersFromRows, detectHeader, autoMap, FIELDS, heightCm, rawCSV, resultsCSV, rawRows, resultsRows, toCSV, demoSquad, interpRef };
+  const api = { READER_DEFAULT, READER_RANKS, readerQualities, readerProfile, testingHubRows, testRows, METRICS, NORMS, sizeAt, testRecords, percentileAmong, DEFAULT_SETTINGS, STATUS, TIMING, TEMPO, CI, parseDate, iso, decimalAge, daysBetween, biologicalAge, midparentCm, predictAdultHeight, ciFor, assess, velocity, profile, parseCSV, playersFromCSV, playersFromRows, detectHeader, autoMap, FIELDS, heightCm, rawCSV, resultsCSV, rawRows, resultsRows, toCSV, demoSquad, interpRef };
   root.GM = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -786,7 +837,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     sort: { key: 'pct', dir: -1 },
     confirm: null, msg: {}, imode: 'add',
     session: { squad: '', date: '', vals: {} },
-    imp: null, metric: 'sprint10', paxis: 'ba'
+    imp: null, metric: 'sprint10', paxis: 'ba', raxis: 'ba', rq: null
   };
   const TABS = ['squad', 'player', 'perf', 'record', 'data', 'calculator', 'method'];
 
@@ -829,7 +880,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     }, () => { });
     render();
   }
-  const cleanPlayer = p => JSON.parse(JSON.stringify({ name: p.name, sex: p.sex, dob: p.dob, squad: p.squad || '', mother: p.mother ?? null, father: p.father ?? null, assessments: p.assessments || [], tests: p.tests || [], ...(p.example ? { example: true } : {}) }));
+  const cleanPlayer = p => JSON.parse(JSON.stringify({ name: p.name, sex: p.sex, dob: p.dob, squad: p.squad || '', mother: p.mother ?? null, father: p.father ?? null, assessments: p.assessments || [], tests: p.tests || [], ...(p.reader ? { reader: p.reader } : {}), ...(p.example ? { example: true } : {}) }));
   // ---------- storage on your own site: Supabase, behind a coach sign-in ----------
   async function startSupabase(cfg) {
     if (!window.supabase || !window.supabase.createClient) {
@@ -1189,6 +1240,96 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       <section class="grid" style="gap:10px"><h3>Test history</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th class="n">Age</th><th class="n">Bio age</th>${G.METRICS.map(m => `<th class="n">${esc(m.label)}${m.unit ? ` <span class="sub">${esc(m.unit)}</span>` : ''}</th>`).join('')}<th></th></tr></thead><tbody>${hist}</tbody></table></div></section>`;
   }
 
+  // ---------- READER profile ----------
+  const RANK_COL = ['var(--sm-red)', 'var(--sm-orange)', 'var(--sm-blue)'];
+  const qLabel = q => q.name || 'Not named yet';
+  // Radar: one spoke per READER quality, scored 0–10 outwards. A spoke with no score is skipped by the shape.
+  function radarChart(W, { axes, series, sel }) {
+    const H = Math.max(300, Math.min(W, 440)), cx = W / 2, cy = H / 2 + 4, R = Math.max(70, Math.min(W / 2 - 78, H / 2 - 44));
+    const n = axes.length, ang = i => -Math.PI / 2 + i * 2 * Math.PI / n;
+    const pt = (i, v) => [cx + Math.cos(ang(i)) * R * v / 10, cy + Math.sin(ang(i)) * R * v / 10].map(z => +z.toFixed(1));
+    let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="READER profile">`;
+    for (const v of [2, 4, 6, 8, 10]) s += `<polygon class="grid" fill="none" points="${axes.map((_, i) => pt(i, v).join(',')).join(' ')}"/>`;
+    axes.forEach((_, i) => { const [x, y] = pt(i, 10); s += `<line class="grid" x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"/>`; });
+    for (const v of [5, 10]) s += `<text x="${cx + 4}" y="${cy - R * v / 10 + 12}">${v}</text>`;
+    for (const se of series) {
+      const pts = axes.map((a, i) => se.vals[i] == null ? null : pt(i, Math.max(0.15, Math.min(10, se.vals[i])))).filter(Boolean);
+      if (pts.length > 1) s += `<polygon points="${pts.map(p => p.join(',')).join(' ')}" fill="${se.fill ? se.color : 'none'}" fill-opacity="${se.fill ? 0.16 : 0}" stroke="${se.color}" stroke-width="${se.fill ? 2.25 : 1.75}" ${se.dash ? 'stroke-dasharray="5 4"' : ''} stroke-linejoin="round"/>`;
+      axes.forEach((a, i) => { if (se.vals[i] == null) return; const [x, y] = pt(i, Math.max(0.15, Math.min(10, se.vals[i])));
+        s += `<circle cx="${x}" cy="${y}" r="${se.fill ? 4.5 : 3.5}" fill="${se.fill ? se.color : 'var(--surface)'}" stroke="${se.color}" stroke-width="1.75" ${tipAttr(`<b>${esc(a.title)}</b><br>${esc(se.name)}: ${f(se.vals[i], 1)} / 10`)}/>`; });
+    }
+    axes.forEach((a, i) => {
+      const [x, y] = pt(i, 10), c = Math.cos(ang(i)), lx = x + c * 16, ly = y + Math.sin(ang(i)) * 18;
+      const anchor = Math.abs(c) < 0.2 ? 'middle' : c > 0 ? 'start' : 'end', on = a.key === sel;
+      const top = ly + (Math.sin(ang(i)) < -0.5 ? -16 : Math.sin(ang(i)) > 0.5 ? 6 : -6);
+      s += `<g data-rq="${esc(a.key)}" class="rq${on ? ' on' : ''}" tabindex="0" role="button" aria-label="${esc(a.title)}: show the tests behind it">
+        <text x="${lx}" y="${top}" text-anchor="${anchor}" class="rq-l">${esc(a.letter)}${W >= 480 ? `<tspan class="rq-n" dx="5">${esc(a.name)}</tspan>` : ''}</text>
+        <text x="${lx}" y="${top + 16}" text-anchor="${anchor}" class="rq-s">${a.score != null ? f(a.score, 1) : 'not tested'}${a.rank != null ? ' · ' + G.READER_RANKS[a.rank] : ''}</text></g>`;
+    });
+    return s + '</svg>';
+  }
+
+  function playerReader(p) {
+    const R = records(); if (!R.some(r => r.pid === p.id)) return '';
+    const Q = G.readerQualities(S.settings), axis = S.raxis === 'ca' ? 'ca' : 'ba';
+    const now = G.readerProfile(R, p.id, Q, axis); if (!now) return '';
+    const prev = G.readerProfile(R, p.id, Q, axis, now.t - 1);
+    const mine = p.reader || {}, self = mine.self || {};
+    const chosen = (mine.priorities || []).filter(k => Q.some(q => q.key === k));
+    const pri = chosen.length ? chosen : now.priorities;
+    const sel = Q.some(q => q.key === S.rq) ? S.rq : (pri[0] || Q[0].key);
+    const qs = now.qualities;
+    const hasSelf = Q.some(q => typeof self[q.key] === 'number');
+    const series = [];
+    if (prev && prev.qualities.some(q => q.score != null)) series.push({ name: 'Previous tests', color: 'var(--muted)', dash: true, vals: prev.qualities.map(q => q.score) });
+    if (hasSelf) series.push({ name: 'Athlete\'s own rating', color: 'var(--sm-orange)', dash: true, vals: Q.map(q => typeof self[q.key] === 'number' ? self[q.key] : null) });
+    series.push({ name: 'Latest tests', color: 'var(--accent)', fill: true, vals: qs.map(q => q.score) });
+    const axes = qs.map(q => ({ key: q.key, letter: q.letter, name: q.name, title: q.letter + ' · ' + qLabel(q), score: q.score, rank: pri.indexOf(q.key) >= 0 ? pri.indexOf(q.key) : null }));
+    const chart = chartSlot('reader', W => radarChart(W, { axes, series, sel }));
+    const lg = `<div class="legend"><span><i style="background:var(--accent)"></i>Latest tests</span>${series.some(x => x.name === 'Previous tests') ? `<span><i style="background:var(--muted)"></i>Previous tests (${fmtDate(G.iso(new Date(prev.t)))})</span>` : ''}${hasSelf ? '<span><i style="background:var(--sm-orange)"></i>Athlete\'s own rating</span>' : ''}</div>`;
+
+    const q = qs.find(x => x.key === sel), pq = prev && prev.qualities.find(x => x.key === sel);
+    const rows = q.tests.map(x => `<tr><td><b>${esc(x.metric.label)}</b></td><td>${x.rec ? fmtDate(x.rec.date) : '—'}</td><td class="n">${x.rec ? fmtVal(x.metric, x.rec.vals[x.metric.key]) : '—'}</td><td class="pcell">${x.rec ? pctBar(x.pr) : '<span class="sub">Not tested yet</span>'}</td><td>${x.rec && x.axis !== axis ? '<span class="sub">by age</span>' : ''}</td></tr>`).join('');
+    const gap = typeof self[sel] === 'number' && q.score != null ? self[sel] - q.score : null;
+    const detail = `<div class="grid" style="gap:10px;align-content:start">
+      <div><span class="label">${esc(q.letter)} · ${esc(qLabel(q))}</span>
+        <div class="rq-big">${q.score != null ? f(q.score, 1) : '—'}<small style="font:500 13px var(--font-body);color:var(--muted)"> / 10</small>
+          ${pq && pq.score != null && q.score != null ? `<small style="font:500 13px var(--font-body);color:var(--muted);margin-left:8px">${sgn(q.score - pq.score, 1)} since ${fmtDate(G.iso(new Date(prev.t)))}</small>` : ''}</div>
+        ${gap != null ? `<p class="sub">Athlete rates themselves ${f(self[sel], 0)} / 10, ${Math.abs(gap) < 1 ? 'about the same as the tests' : gap > 0 ? `${f(gap, 1)} above what the tests show` : `${f(-gap, 1)} below what the tests show`}.</p>` : ''}</div>
+      ${q.tests.length ? `<div class="table-wrap"><table><thead><tr><th>Test</th><th>Tested</th><th class="n">Result</th><th>Percentile</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
+        <p class="sub">Score = average percentile of ${q.n === q.tests.length ? 'these tests' : `the ${q.n} tests with a result`} ÷ 10.</p>`
+        : `<p class="note">No tests are chosen for this letter yet. Pick them under READER tests on the Data tab.</p>`}</div>`;
+
+    const priRows = [0, 1, 2].map(i => `<label class="field"><span><i class="dot" style="background:${RANK_COL[i]}"></i>${G.READER_RANKS[i]}</span><select data-rpri="${i}">
+      ${Q.map(x => { const sq = qs.find(y => y.key === x.key); return `<option value="${esc(x.key)}" ${pri[i] === x.key ? 'selected' : ''}>${esc(x.letter + ' · ' + qLabel(x))}${sq && sq.score != null ? ' (' + f(sq.score, 1) + ')' : ''}</option>`; }).join('')}<option value="" ${!pri[i] ? 'selected' : ''}>None</option></select></label>`).join('');
+    const goals = `<form id="reader-self" class="grid" style="gap:12px">
+      <label class="field"><span>What kind of athlete do they want to be known as?</span><input type="text" id="rs-word" maxlength="40" placeholder="e.g. Speedy" value="${esc(mine.word || '')}"></label>
+      <div><span class="label">How good do they think they are now? (0–10)</span>
+      <div class="form-grid" style="margin-top:6px">${Q.map(x => `<label class="field"><span>${esc(x.letter + ' · ' + qLabel(x))}</span><input type="number" min="0" max="10" step="1" data-rself="${esc(x.key)}" value="${typeof self[x.key] === 'number' ? self[x.key] : ''}"></label>`).join('')}</div></div>
+      <div class="bar"><button class="btn" type="submit">Save athlete's view</button><span class="ok" role="status">${esc(S.msg.rs || '')}</span></div></form>`;
+
+    return `<section class="panel reader"><div class="panel-head"><div><h3>READER profile${mine.word ? ` <span class="pill"><i style="background:var(--sm-orange)"></i>Wants to be known as ${esc(mine.word)}</span>` : ''}</h3>
+        <p class="sub">Each letter scores 0–10 from the tests behind it, compared with players ${axis === 'ba' ? 'at the same stage of growth' : 'the same age'}. Choose a letter to see its tests.</p></div>
+        <div class="seg" role="group" aria-label="Compare with"><button data-raxis="ca" aria-pressed="${axis === 'ca'}">By age</button><button data-raxis="ba" aria-pressed="${axis === 'ba'}">By maturity</button></div></div>
+      <div class="grid2"><div>${chart}${lg}</div>${detail}</div>
+      <div class="grid2" style="margin-top:var(--gap)">
+        <section><h3>Priorities for the next block</h3><p class="sub" style="margin-bottom:8px">${chosen.length ? 'Set by a coach.' : 'Suggested from the lowest three scores.'} Change them if the athlete or coach sees it differently.</p>
+          <div class="form-grid">${priRows}</div>${chosen.length ? '<div class="bar" style="margin-top:8px"><button class="btn small" id="rpri-reset">Use the suggested order</button></div>' : ''}</section>
+        <section><h3>Athlete's view</h3>${goals}</section></div></section>`;
+  }
+
+  // Data tab: which tests feed each READER letter.
+  function readerSettings() {
+    const Q = G.readerQualities(S.settings);
+    return `<section class="panel"><div class="panel-head"><div><h3>READER tests</h3><p class="sub">Name each letter and tick the tests that make up its score. A test can count towards more than one letter.</p></div></div>
+      <form id="reader-map" class="grid" style="gap:12px">
+      <div class="table-wrap"><table class="rmap"><thead><tr><th>Letter</th><th>Name</th>${G.METRICS.map(m => `<th class="c">${esc(m.label)}</th>`).join('')}</tr></thead><tbody>
+      ${Q.map((q, i) => `<tr><td><b>${esc(q.letter)}</b></td><td><input type="text" data-rname="${i}" value="${esc(q.name)}" placeholder="Name this letter" style="min-width:140px"></td>
+        ${G.METRICS.map(m => `<td class="c"><input type="checkbox" data-rtest="${i}" value="${m.key}" ${q.tests.includes(m.key) ? 'checked' : ''} aria-label="${esc(m.label)} counts towards ${esc(q.letter)}"></td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>
+      <div class="bar"><button class="btn primary" type="submit">Save READER tests</button><button class="btn" type="button" id="reader-reset">Back to the starting mapping</button><span class="ok" role="status">${esc(S.msg.rm || '')}</span></div></form></section>`;
+  }
+
   function viewSquad() {
     if (!S.players.length) return `<section class="panel"><h2>No players yet</h2><p class="note" style="margin-top:8px">Import your existing measurements from Excel or CSV on the Data tab, or add players and record a testing session on the Record tab.</p>
       <div class="bar" style="margin-top:14px"><button class="btn primary tab-link" data-goto="data">Import a spreadsheet</button><button class="btn tab-link" data-goto="record">Record a session</button></div></section>`;
@@ -1474,7 +1615,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       <form id="edit-p" class="form-grid">${playerFields(p, 'e')}<div class="field" style="align-self:end"><button class="btn" type="submit">Save details</button></div></form>
       <p class="ok" role="status">${esc(S.msg.e || '')}</p></section>`;
 
-    return picker + head + playerGauges(p) + cards + charts + hist + playerPerf(p) + `<div class="grid2">${addForm}${editForm}</div>`;
+    return picker + head + playerGauges(p) + cards + charts + hist + playerReader(p) + playerPerf(p) + `<div class="grid2">${addForm}${editForm}</div>`;
   }
 
   const playerFields = (p = {}, pre) => `
@@ -1652,7 +1793,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
           <label class="field"><span>Re-measure after (days)</span>${numIn('s-stale', st.staleDays, 1)}</label><label class="field"><span>Short interval under (days)</span>${numIn('s-short', st.shortIntervalDays, 1)}</label></div>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="s-self" ${st.parentsSelfReported ? 'checked' : ''}> Parent heights are self-reported (apply the Khamis-Roche adjustment)</label>
           <div><button class="btn" type="submit">Save settings</button> <span class="ok" role="status">${esc(S.msg.s || '')}</span></div></form></section>
-    </div>`;
+    </div>` + readerSettings();
   }
 
   function viewMethod() {
@@ -1791,6 +1932,10 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       S.msg = error ? { login: error.message } : { login: 'Check your email for a link to choose a new password.', loginOk: true }; return render();
     }
     const pax = t.closest('[data-paxis]'); if (pax) { S.paxis = pax.dataset.paxis; return render(); }
+    const rax = t.closest('[data-raxis]'); if (rax) { S.raxis = rax.dataset.raxis; return render(); }
+    const rq = t.closest('[data-rq]'); if (rq) { S.rq = rq.dataset.rq; return render(); }
+    if (t.id === 'rpri-reset') { const p = current(); p.reader = { ...(p.reader || {}) }; delete p.reader.priorities; return persist([p]); }
+    if (t.id === 'reader-reset') { S.settings = { ...S.settings }; delete S.settings.reader; S.msg = { rm: 'Starting mapping restored.' }; return persistSettings(); }
     const delT = t.closest('[data-del-t]');
     if (delT) { const p = current(); p.tests = (p.tests || []).filter(x => G.iso(G.parseDate(x.date)) !== delT.dataset.delT); S.confirm = null; return persist([p]); }
     const delA = t.closest('[data-del-a]');
@@ -1801,7 +1946,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     if (t.id === 'clear-go') { const ids = S.players.map(p => p.id); S.players = []; S.confirm = null; S.playerId = null; return persist([], ids); }
     if (t.id === 'mig-go') { const { changed } = mergePlayers(store.localOld.map(p => ({ ...p, id: p.id || uid() })), false); store.localOld = []; try { localStorage.setItem(KEY, JSON.stringify({ players: [], filter: S.filter })); } catch (err) { } return persist(changed); }
     if (t.id === 'c-reset') { calc = { ...CALC_DEFAULT }; S.msg.c = ''; return render(); }
-    if (t.id === 'set-reset') { S.settings = { ...G.DEFAULT_SETTINGS }; S.msg.s = 'Defaults restored.'; return persistSettings(); }
+    if (t.id === 'set-reset') { S.settings = { ...G.DEFAULT_SETTINGS, ...(S.settings.reader ? { reader: S.settings.reader } : {}) }; S.msg.s = 'Defaults restored.'; return persistSettings(); }
     if (t.id === 'c-add') {
       const name = calc.name.trim() || 'Unnamed player';
       const a = { date: calc.date, height: +calc.height, mass: +calc.mass };
@@ -1846,7 +1991,10 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       return;
     }
   });
-  document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('tr[data-pid]')) openPlayer(e.target.dataset.pid); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.matches('tr[data-pid]')) openPlayer(e.target.dataset.pid);
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[data-rq]')) { e.preventDefault(); S.rq = e.target.dataset.rq; render(); }
+  });
 
   document.addEventListener('input', e => {
     const t = e.target;
@@ -1873,6 +2021,16 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     if (t.dataset.map) { S.imp.map[t.dataset.map] = +t.value; S.confirm = null; $('#imp-area').innerHTML = importArea(); }
     if (t.id === 'ses-squad') { S.session.squad = t.value; S.msg.ses = ''; render(); }
     if (t.id === 'ses-date') { S.session.date = t.value || todayISO(); render(); }
+    if (t.dataset.rpri != null) {
+      const p = current(), Q = G.readerQualities(S.settings), R = records(), now = G.readerProfile(R, p.id, Q, S.raxis === 'ca' ? 'ca' : 'ba');
+      const pri = ((p.reader && p.reader.priorities && p.reader.priorities.length) ? p.reader.priorities : (now ? now.priorities : [])).slice(0, 3);
+      while (pri.length < 3) pri.push('');
+      const i = +t.dataset.rpri, j = pri.indexOf(t.value);
+      if (t.value && j >= 0 && j !== i) pri[j] = pri[i];   // picking one already used swaps the two
+      pri[i] = t.value;
+      p.reader = { ...(p.reader || {}), priorities: pri.filter(Boolean) };
+      return persist([p]);
+    }
   });
   document.addEventListener('submit', async e => {
     e.preventDefault();
@@ -1896,6 +2054,18 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       p.assessments = p.assessments.filter(a => a.date !== date).concat({ date, height, mass });
       S.msg = {}; return persist([p]);
     }
+    if (id === 'reader-self') {
+      const p = current(), self = {};
+      $$('[data-rself]').forEach(i => { const v = parseFloat(i.value); if (isFinite(v)) self[i.dataset.rself] = Math.max(0, Math.min(10, v)); });
+      p.reader = { ...(p.reader || {}), word: $('#rs-word').value.trim(), self, selfDate: todayISO() };
+      S.msg = { rs: 'Saved.' }; return persist([p]);
+    }
+    if (id === 'reader-map') {
+      const Q = G.readerQualities(S.settings).map((q, i) => ({ ...q,
+        name: ($(`[data-rname="${i}"]`).value || '').trim(),
+        tests: $$(`[data-rtest="${i}"]`).filter(c => c.checked).map(c => c.value) }));
+      S.settings = { ...S.settings, reader: Q }; S.msg = { rm: 'Saved.' }; return persistSettings();
+    }
     if (id === 'edit-p') {
       const p = current(); const v = readPlayerFields('e');
       if (!v.name || !v.dob) return;
@@ -1914,7 +2084,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       const n = id => parseFloat($('#' + id).value);
       const cuts = [n('s-c0'), n('s-c1'), n('s-c2')];
       if (cuts.some(isNaN) || !(cuts[0] < cuts[1] && cuts[1] < cuts[2])) { S.msg = { s: 'Status cut-offs must increase.' }; return render(); }
-      S.settings = { statusCuts: cuts, timingCuts: [n('s-t0'), n('s-t1')], heightTempo: [n('s-h0'), n('s-h1')], weightTempo: [n('s-w0'), n('s-w1')], staleDays: n('s-stale'), shortIntervalDays: n('s-short'), parentsSelfReported: $('#s-self').checked };
+      S.settings = { ...S.settings, statusCuts: cuts, timingCuts: [n('s-t0'), n('s-t1')], heightTempo: [n('s-h0'), n('s-h1')], weightTempo: [n('s-w0'), n('s-w1')], staleDays: n('s-stale'), shortIntervalDays: n('s-short'), parentsSelfReported: $('#s-self').checked };
       S.msg = { s: 'Saved.' }; return persistSettings();
     }
   });
