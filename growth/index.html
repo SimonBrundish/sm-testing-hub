@@ -228,6 +228,12 @@ section.grid, div.grid { display: grid; }
 .rmap th.c, .rmap td.c { text-align: center; }
 .rmap th.c { min-width: 64px; white-space: normal; }
 .rq-big { font: 700 44px/1 var(--font-display); color: var(--ink); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.rq-big small { font: 500 13px var(--font-body); color: var(--muted); }
+.rq-stats { display: flex; gap: 28px; flex-wrap: wrap; }
+.chart .rq-solo { fill: var(--ink); font: 700 15px var(--font-display); letter-spacing: .02em; }
+.chart .rq:hover .rq-solo, .chart .rq.on .rq-solo { fill: var(--sm-red); }
+.rself input[type=text] { width: 100%; min-width: 110px; }
+.rself input[type=number] { width: 72px; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script>window.GM_CONFIG = {"supabaseUrl": "https://msnazqefuanyodfzxlwl.supabase.co", "supabaseKey": "sb_publishable_gm7W42jArEcU-yJF_4C4fQ_X7kopcbF"};</script>
@@ -571,13 +577,17 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
   // Each quality scores 0–10: the mean percentile of the tests mapped to it, divided by 10.
   // Which tests feed which quality is a coach setting (settings.reader) because it is still being decided.
   const READER_DEFAULT = [
-    { key: 'r', letter: 'R', name: '', tests: [] },
-    // Howard and Simon's table (14 Oct 2026). Left/right tests both count; jumps and hops relative to height.
+    // Letters and meanings from the identity report; tests from Howard and Simon's table (14 Oct 2026).
+    // Left/right tests both count; jumps and hops relative to height. Effort and Character are self-scored only.
+    { key: 'resonance', letter: 'R', name: 'Resonance', tests: [] },
     { key: 'explode', letter: 'E', name: 'Explode', tests: ['cmj', 'rsi105', 'slcmj', 'tbForceBW'] },
     { key: 'accelerate', letter: 'A', name: 'Accelerate', tests: ['sprint5', 'sprint10', 'star', 'bjRel', 'hopLRel', 'hopRRel'] },
     { key: 'decelerate', letter: 'D', name: 'Decelerate', tests: ['hop3LRel', 'hop3RRel', 'codL', 'codR', 'dropDeficit'] },
     { key: 'execute', letter: 'E', name: 'Execute', tests: ['ballThrow'] },
-    { key: 'recover', letter: 'R', name: 'Recover & Repeat', tests: ['star', 'ift3015', 'borthwick'] }
+    { key: 'recover', letter: 'R', name: 'Recover', tests: ['star', 'borthwick'] },
+    { key: 'repeat', letter: '', name: 'Repeat', tests: ['ift3015'] },
+    { key: 'effort', letter: '', name: 'Effort', tests: [] },
+    { key: 'character', letter: '', name: 'Character', tests: [] }
   ];
   const READER_RANKS = ['Primary', 'Secondary', 'Tertiary'];
   const readerQualities = s => (s && Array.isArray(s.reader) && s.reader.length ? s.reader : READER_DEFAULT);
@@ -918,7 +928,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     sort: { key: 'pct', dir: -1 },
     confirm: null, msg: {}, imode: 'add',
     session: { squad: '', date: '', vals: {} },
-    imp: null, metric: 'sprint10', paxis: 'ba', raxis: 'ba', rq: null
+    imp: null, metric: 'sprint10', paxis: 'ba', raxis: 'ba', rq: null, rview: 'both'
   };
   const TABS = ['squad', 'player', 'perf', 'record', 'data', 'calculator', 'method'];
 
@@ -1323,90 +1333,120 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
 
   // ---------- READER profile ----------
   const RANK_COL = ['var(--sm-red)', 'var(--sm-orange)', 'var(--sm-blue)'];
+  const OBJ_COL = 'var(--accent)', SUBJ_COL = 'var(--sm-orange)';
   const qLabel = q => q.name || 'Not named yet';
-  // Radar: one spoke per READER quality, scored 0–10 outwards. A spoke with no score is skipped by the shape.
+  const qTitle = q => (q.letter ? q.letter + ' · ' : '') + qLabel(q);
+  // Identity benchmarks from the self-assessment report.
+  const bandOf = v => v == null ? '' : v < 3 ? 'Needs attention' : v < 5 ? 'Emerging' : v < 7 ? 'Developing' : v < 9 ? 'Strong' : 'Signature';
+  // Radar: one spoke per quality, scored 0–10 outwards. A spoke with no value is skipped by that shape.
   function radarChart(W, { axes, series, sel }) {
-    const H = Math.max(300, Math.min(W, 440)), cx = W / 2, cy = H / 2 + 4, R = Math.max(70, Math.min(W / 2 - 78, H / 2 - 44));
+    const H = Math.max(300, Math.min(W, 460)), cx = W / 2, cy = H / 2 + 4, R = Math.max(70, Math.min(W / 2 - 84, H / 2 - 46));
     const n = axes.length, ang = i => -Math.PI / 2 + i * 2 * Math.PI / n;
     const pt = (i, v) => [cx + Math.cos(ang(i)) * R * v / 10, cy + Math.sin(ang(i)) * R * v / 10].map(z => +z.toFixed(1));
+    if (n < 3) return `<div class="empty">Choose tests for at least three qualities on the Data tab to draw the radar.</div>`;
     let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="READER profile">`;
     for (const v of [2, 4, 6, 8, 10]) s += `<polygon class="grid" fill="none" points="${axes.map((_, i) => pt(i, v).join(',')).join(' ')}"/>`;
     axes.forEach((_, i) => { const [x, y] = pt(i, 10); s += `<line class="grid" x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"/>`; });
     for (const v of [5, 10]) s += `<text x="${cx + 4}" y="${cy - R * v / 10 + 12}">${v}</text>`;
     for (const se of series) {
       const pts = axes.map((a, i) => se.vals[i] == null ? null : pt(i, Math.max(0.15, Math.min(10, se.vals[i])))).filter(Boolean);
-      if (pts.length > 1) s += `<polygon points="${pts.map(p => p.join(',')).join(' ')}" fill="${se.fill ? se.color : 'none'}" fill-opacity="${se.fill ? 0.16 : 0}" stroke="${se.color}" stroke-width="${se.fill ? 2.25 : 1.75}" ${se.dash ? 'stroke-dasharray="5 4"' : ''} stroke-linejoin="round"/>`;
+      if (pts.length > 1) s += `<polygon points="${pts.map(p => p.join(',')).join(' ')}" fill="${se.fill ? se.color : 'none'}" fill-opacity="${se.fill ? 0.14 : 0}" stroke="${se.color}" stroke-width="${se.dash ? 1.5 : 2.25}" ${se.dash ? 'stroke-dasharray="5 4"' : ''} stroke-linejoin="round"/>`;
       axes.forEach((a, i) => { if (se.vals[i] == null) return; const [x, y] = pt(i, Math.max(0.15, Math.min(10, se.vals[i])));
-        s += `<circle cx="${x}" cy="${y}" r="${se.fill ? 4.5 : 3.5}" fill="${se.fill ? se.color : 'var(--surface)'}" stroke="${se.color}" stroke-width="1.75" ${tipAttr(`<b>${esc(a.title)}</b><br>${esc(se.name)}: ${f(se.vals[i], 1)} / 10`)}/>`; });
+        s += `<circle cx="${x}" cy="${y}" r="${se.dash ? 3.5 : 4.5}" fill="${se.dash ? 'var(--surface)' : se.color}" stroke="${se.color}" stroke-width="1.75" ${tipAttr(`<b>${esc(a.title)}</b><br>${esc(se.name)}: ${f(se.vals[i], 1)} / 10${se.words && se.words[i] ? ` · “${esc(se.words[i])}”` : ''}`)}/>`; });
     }
+    const narrow = W < 480;
     axes.forEach((a, i) => {
-      const [x, y] = pt(i, 10), c = Math.cos(ang(i)), lx = x + c * 16, ly = y + Math.sin(ang(i)) * 18;
+      const [x, y] = pt(i, 10), c = Math.cos(ang(i)), sn = Math.sin(ang(i)), lx = x + c * 14, ly = y + sn * 16;
       const anchor = Math.abs(c) < 0.2 ? 'middle' : c > 0 ? 'start' : 'end', on = a.key === sel;
-      const top = ly + (Math.sin(ang(i)) < -0.5 ? -16 : Math.sin(ang(i)) > 0.5 ? 6 : -6);
-      s += `<g data-rq="${esc(a.key)}" class="rq${on ? ' on' : ''}" tabindex="0" role="button" aria-label="${esc(a.title)}: show the tests behind it">
-        <text x="${lx}" y="${top}" text-anchor="${anchor}" class="rq-l">${esc(a.letter)}${W >= 480 ? `<tspan class="rq-n" dx="5">${esc(a.name)}</tspan>` : ''}</text>
-        <text x="${lx}" y="${top + 16}" text-anchor="${anchor}" class="rq-s">${a.score != null ? f(a.score, 1) : 'not tested'}${a.rank != null ? ' · ' + G.READER_RANKS[a.rank] : ''}</text></g>`;
+      const top = ly + (sn < -0.5 ? -16 : sn > 0.5 ? 6 : -6);
+      const head = a.letter ? `${esc(a.letter)}${narrow ? '' : `<tspan class="rq-n" dx="5">${esc(a.name)}</tspan>`}` : `<tspan class="rq-n rq-solo">${esc(narrow ? a.name.slice(0, 9) : a.name)}</tspan>`;
+      s += `<g data-rq="${esc(a.key)}" class="rq${on ? ' on' : ''}" tabindex="0" role="button" aria-label="${esc(a.title)}: show the detail">
+        <text x="${lx}" y="${top}" text-anchor="${anchor}" class="rq-l">${head}</text>
+        <text x="${lx}" y="${top + 16}" text-anchor="${anchor}" class="rq-s">${esc(a.sub)}</text></g>`;
     });
     return s + '</svg>';
   }
 
   function playerReader(p) {
-    const R = records(); if (!R.some(r => r.pid === p.id)) return '';
-    const Q = G.readerQualities(S.settings), axis = S.raxis === 'ca' ? 'ca' : 'ba';
-    const now = G.readerProfile(R, p.id, Q, axis); if (!now) return '';
-    const prev = G.readerProfile(R, p.id, Q, axis, now.t - 1);
-    const mine = p.reader || {}, self = mine.self || {};
-    const chosen = (mine.priorities || []).filter(k => Q.some(q => q.key === k));
-    const pri = chosen.length ? chosen : now.priorities;
-    const sel = Q.some(q => q.key === S.rq) ? S.rq : (pri[0] || Q[0].key);
-    const qs = now.qualities;
+    const R = records(), Q = G.readerQualities(S.settings).filter(q => q.name || (q.tests || []).length);
+    const axis = S.raxis === 'ca' ? 'ca' : 'ba';
+    const now = G.readerProfile(R, p.id, Q, axis), prev = now ? G.readerProfile(R, p.id, Q, axis, now.t - 1) : null;
+    const mine = p.reader || {}, self = mine.self || {}, words = mine.words || {};
     const hasSelf = Q.some(q => typeof self[q.key] === 'number');
+    if (!now && !hasSelf && !R.some(r => r.pid === p.id)) return readerSelfOnly(p, Q, mine);
+    const mode = !now ? 'subj' : !hasSelf ? 'obj' : (S.rview || 'both');
+    const objOf = k => now ? now.qualities.find(x => x.key === k) : null;
+    const prevOf = k => prev ? prev.qualities.find(x => x.key === k) : null;
+    // Objective view shows only qualities that have tests; the others are self-rated only.
+    const shown = Q.filter(q => mode !== 'obj' || (q.tests || []).length);
+    const chosen = (mine.priorities || []).filter(k => Q.some(q => q.key === k));
+    const pri = chosen.length ? chosen : now ? now.priorities : [];
+    const sel = shown.some(q => q.key === S.rq) ? S.rq : (pri.find(k => shown.some(q => q.key === k)) || shown[0].key);
     const series = [];
-    if (prev && prev.qualities.some(q => q.score != null)) series.push({ name: 'Previous tests', color: 'var(--muted)', dash: true, vals: prev.qualities.map(q => q.score) });
-    if (hasSelf) series.push({ name: 'Athlete\'s own rating', color: 'var(--sm-orange)', dash: true, vals: Q.map(q => typeof self[q.key] === 'number' ? self[q.key] : null) });
-    series.push({ name: 'Latest tests', color: 'var(--accent)', fill: true, vals: qs.map(q => q.score) });
-    const axes = qs.map(q => ({ key: q.key, letter: q.letter, name: q.name, title: q.letter + ' · ' + qLabel(q), score: q.score, rank: pri.indexOf(q.key) >= 0 ? pri.indexOf(q.key) : null }));
+    if (mode !== 'subj' && prev && prev.qualities.some(q => q.score != null)) series.push({ name: 'Previous tests', color: 'var(--muted)', dash: true, vals: shown.map(q => prevOf(q.key)?.score ?? null) });
+    if (mode !== 'obj') series.push({ name: 'Athlete’s own score', color: SUBJ_COL, fill: mode === 'subj', vals: shown.map(q => typeof self[q.key] === 'number' ? self[q.key] : null), words: shown.map(q => words[q.key] || '') });
+    if (mode !== 'subj') series.push({ name: 'Tests', color: OBJ_COL, fill: true, vals: shown.map(q => objOf(q.key)?.score ?? null) });
+    const axes = shown.map(q => {
+      const o = objOf(q.key)?.score, s_ = self[q.key], rank = pri.indexOf(q.key);
+      const w = words[q.key] || '', short = w.length > 13 ? w.slice(0, 12).trim() + '…' : w;
+      const parts = mode === 'subj' ? [short ? `“${short}”` : '', typeof s_ === 'number' ? f(s_, s_ % 1 ? 1 : 0) : 'not scored']
+        : mode === 'obj' ? [o != null ? f(o, 1) : 'not tested', rank >= 0 ? G.READER_RANKS[rank] : '']
+        : [o != null ? 'Tests ' + f(o, 1) : (q.tests || []).length ? 'not tested' : 'self only', typeof s_ === 'number' ? 'Self ' + f(s_, s_ % 1 ? 1 : 0) : ''];
+      return { key: q.key, letter: q.letter, name: qLabel(q), title: qTitle(q), sub: parts.filter(Boolean).join(' · ') };
+    });
     const chart = chartSlot('reader', W => radarChart(W, { axes, series, sel }));
-    const lg = `<div class="legend"><span><i style="background:var(--accent)"></i>Latest tests</span>${series.some(x => x.name === 'Previous tests') ? `<span><i style="background:var(--muted)"></i>Previous tests (${fmtDate(G.iso(new Date(prev.t)))})</span>` : ''}${hasSelf ? '<span><i style="background:var(--sm-orange)"></i>Athlete\'s own rating</span>' : ''}</div>`;
+    const prevDate = prev ? fmtDate(G.iso(new Date(prev.t))) : '';
+    const lg = `<div class="legend">${mode !== 'subj' ? `<span><i style="background:${OBJ_COL}"></i>Tests</span>` : ''}${mode !== 'obj' ? `<span><i style="background:${SUBJ_COL}"></i>Athlete’s own score</span>` : ''}${series.some(x => x.name === 'Previous tests') ? `<span><i style="background:var(--muted)"></i>Previous tests (${prevDate})</span>` : ''}</div>`;
 
-    const q = qs.find(x => x.key === sel), pq = prev && prev.qualities.find(x => x.key === sel);
-    const rows = q.tests.map(x => `<tr><td><b>${esc(x.metric.label)}</b></td><td>${x.rec ? fmtDate(x.rec.date) : '—'}</td><td class="n">${x.rec ? fmtVal(x.metric, x.rec.vals[x.metric.key]) : '—'}</td><td class="pcell">${x.rec ? pctBar(x.pr) : '<span class="sub">Not tested yet</span>'}</td><td>${x.rec && x.axis !== axis ? `<span class="sub">${x.axis === 'group' ? 'whole group' : 'by age'}</span>` : ''}</td></tr>`).join('');
-    const gap = typeof self[sel] === 'number' && q.score != null ? self[sel] - q.score : null;
-    const detail = `<div class="grid" style="gap:10px;align-content:start">
-      <div><span class="label">${esc(q.letter)} · ${esc(qLabel(q))}</span>
-        <div class="rq-big">${q.score != null ? f(q.score, 1) : '—'}<small style="font:500 13px var(--font-body);color:var(--muted)"> / 10</small>
-          ${pq && pq.score != null && q.score != null ? `<small style="font:500 13px var(--font-body);color:var(--muted);margin-left:8px">${sgn(q.score - pq.score, 1)} since ${fmtDate(G.iso(new Date(prev.t)))}</small>` : ''}</div>
-        ${gap != null ? `<p class="sub">Athlete rates themselves ${f(self[sel], 0)} / 10, ${Math.abs(gap) < 1 ? 'about the same as the tests' : gap > 0 ? `${f(gap, 1)} above what the tests show` : `${f(-gap, 1)} below what the tests show`}.</p>` : ''}</div>
-      ${q.tests.length ? `<div class="table-wrap"><table><thead><tr><th>Test</th><th>Tested</th><th class="n">Result</th><th>Percentile</th><th></th></tr></thead><tbody>${rows}</tbody></table></div>
-        <p class="sub">Score = average percentile of ${q.n === q.tests.length ? 'these tests' : `the ${q.n} tests with a result`} ÷ 10.</p>`
-        : `<p class="note">No tests are chosen for this letter yet. Pick them under READER tests on the Data tab.</p>`}</div>`;
+    const q = Q.find(x => x.key === sel), o = objOf(sel), po = prevOf(sel), sv = self[sel];
+    const rows = o ? o.tests.map(x => `<tr><td><b>${esc(x.metric.label)}</b></td><td>${x.rec ? fmtDate(x.rec.date) : '—'}</td><td class="n">${x.rec ? fmtVal(x.metric, x.rec.vals[x.metric.key]) : '—'}</td><td class="pcell">${x.rec ? pctBar(x.pr) : '<span class="sub">Not tested yet</span>'}</td><td>${x.rec && x.axis !== axis ? `<span class="sub">${x.axis === 'group' ? 'whole group' : 'by age'}</span>` : ''}</td></tr>`).join('') : '';
+    const gap = typeof sv === 'number' && o && o.score != null ? sv - o.score : null;
+    const stat = (label, v, col, extra = '') => `<div><span class="label"><i class="dot" style="background:${col}"></i>${label}</span><div class="rq-big">${v != null ? f(v, v % 1 ? 1 : 0) : '—'}<small> / 10</small></div><span class="sub">${esc(bandOf(v))}${extra}</span></div>`;
+    const detail = `<div class="grid" style="gap:12px;align-content:start">
+      <span class="label">${esc(qTitle(q))}</span>
+      <div class="rq-stats">${(q.tests || []).length ? stat('Tests', o && o.score != null ? +o.score.toFixed(1) : null, OBJ_COL, po && po.score != null && o && o.score != null ? ` · ${sgn(o.score - po.score, 1)} since ${prevDate}` : '') : ''}
+        ${typeof sv === 'number' || !(q.tests || []).length ? stat(words[sel] ? `Own score · “${esc(words[sel])}”` : 'Own score', typeof sv === 'number' ? sv : null, SUBJ_COL) : ''}</div>
+      ${gap != null ? `<p class="sub">${Math.abs(gap) < 1 ? 'Their own score and the tests roughly agree.' : gap > 0 ? `They score themselves ${f(gap, 1)} higher than the tests show.` : `They score themselves ${f(-gap, 1)} lower than the tests show.`}</p>` : ''}
+      ${(q.tests || []).length ? `<div class="table-wrap"><table><thead><tr><th>Test</th><th>Tested</th><th class="n">Result</th><th>Percentile</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No results for these tests yet.</td></tr>`}</tbody></table></div>
+        <p class="sub">Test score = average percentile of the tests with a result ÷ 10.</p>`
+        : `<p class="note">${q.letter ? 'No tests are chosen for this letter yet, so it is self-scored only. Pick its tests under READER tests on the Data tab.' : 'Self-scored only: there is no test for this one.'}</p>`}</div>`;
 
-    const priRows = [0, 1, 2].map(i => `<label class="field"><span><i class="dot" style="background:${RANK_COL[i]}"></i>${G.READER_RANKS[i]}</span><select data-rpri="${i}">
-      ${Q.map(x => { const sq = qs.find(y => y.key === x.key); return `<option value="${esc(x.key)}" ${pri[i] === x.key ? 'selected' : ''}>${esc(x.letter + ' · ' + qLabel(x))}${sq && sq.score != null ? ' (' + f(sq.score, 1) + ')' : ''}</option>`; }).join('')}<option value="" ${!pri[i] ? 'selected' : ''}>None</option></select></label>`).join('');
-    const goals = `<form id="reader-self" class="grid" style="gap:12px">
-      <label class="field"><span>What kind of athlete do they want to be known as?</span><input type="text" id="rs-word" maxlength="40" placeholder="e.g. Speedy" value="${esc(mine.word || '')}"></label>
-      <div><span class="label">How good do they think they are now? (0–10)</span>
-      <div class="form-grid" style="margin-top:6px">${Q.map(x => `<label class="field"><span>${esc(x.letter + ' · ' + qLabel(x))}</span><input type="number" min="0" max="10" step="1" data-rself="${esc(x.key)}" value="${typeof self[x.key] === 'number' ? self[x.key] : ''}"></label>`).join('')}</div></div>
-      <div class="bar"><button class="btn" type="submit">Save athlete's view</button><span class="ok" role="status">${esc(S.msg.rs || '')}</span></div></form>`;
-
-    return `<section class="panel reader"><div class="panel-head"><div><h3>READER profile${mine.word ? ` <span class="pill"><i style="background:var(--sm-orange)"></i>Wants to be known as ${esc(mine.word)}</span>` : ''}</h3>
-        <p class="sub">Each letter scores 0–10 from the tests behind it, compared with players ${axis === 'ba' ? 'at the same stage of growth' : 'the same age'}. Choose a letter to see its tests.</p></div>
-        <div class="seg" role="group" aria-label="Compare with"><button data-raxis="ca" aria-pressed="${axis === 'ca'}">By age</button><button data-raxis="ba" aria-pressed="${axis === 'ba'}">By maturity</button></div></div>
+    const priRows = now ? [0, 1, 2].map(i => `<label class="field"><span><i class="dot" style="background:${RANK_COL[i]}"></i>${G.READER_RANKS[i]}</span><select data-rpri="${i}">
+      ${Q.filter(x => (x.tests || []).length).map(x => { const sq = objOf(x.key); return `<option value="${esc(x.key)}" ${pri[i] === x.key ? 'selected' : ''}>${esc(qTitle(x))}${sq && sq.score != null ? ' (' + f(sq.score, 1) + ')' : ''}</option>`; }).join('')}<option value="" ${!pri[i] ? 'selected' : ''}>None</option></select></label>`).join('') : '';
+    const toggle = now && hasSelf ? `<div class="seg" role="group" aria-label="Show">${[['obj', 'Tests'], ['subj', 'Own scores'], ['both', 'Both']].map(([v, l]) => `<button data-rview="${v}" aria-pressed="${mode === v}">${l}</button>`).join('')}</div>` : '';
+    const axisSeg = now && mode !== 'subj' ? `<div class="seg" role="group" aria-label="Compare tests with"><button data-raxis="ca" aria-pressed="${axis === 'ca'}">By age</button><button data-raxis="ba" aria-pressed="${axis === 'ba'}">By maturity</button></div>` : '';
+    return `<section class="panel reader"><div class="panel-head"><div><h3>READER profile${mine.word ? ` <span class="pill"><i style="background:${SUBJ_COL}"></i>Wants to be known as ${esc(mine.word)}</span>` : ''}</h3>
+        <p class="sub">${mode === 'subj' ? 'The athlete’s own scores out of 10, with the word they chose for each.' : `Test scores are 0–10, compared with players ${axis === 'ba' ? 'at the same stage of growth' : 'the same age'}.${mode === 'both' ? ' The orange shape is how the athlete scores themselves.' : ''}`} Choose a quality to see the detail.</p></div>
+        <div class="bar">${toggle}${axisSeg}</div></div>
       <div class="grid2"><div>${chart}${lg}</div>${detail}</div>
       <div class="grid2" style="margin-top:var(--gap)">
-        <section><h3>Priorities for the next block</h3><p class="sub" style="margin-bottom:8px">${chosen.length ? 'Set by a coach.' : 'Suggested from the lowest three scores.'} Change them if the athlete or coach sees it differently.</p>
-          <div class="form-grid">${priRows}</div>${chosen.length ? '<div class="bar" style="margin-top:8px"><button class="btn small" id="rpri-reset">Use the suggested order</button></div>' : ''}</section>
-        <section><h3>Athlete's view</h3>${goals}</section></div></section>`;
+        ${now ? `<section><h3>Priorities for the next block</h3><p class="sub" style="margin-bottom:8px">${chosen.length ? 'Set by a coach.' : 'Suggested from the lowest three test scores.'} Change them if the athlete or coach sees it differently.</p>
+          <div class="form-grid">${priRows}</div>${chosen.length ? '<div class="bar" style="margin-top:8px"><button class="btn small" id="rpri-reset">Use the suggested order</button></div>' : ''}</section>` : '<section></section>'}
+        <section><h3>Self-assessment</h3>${readerSelfForm(Q, mine)}</section></div></section>`;
+  }
+  // The athlete's words and own scores, as on the identity report.
+  function readerSelfForm(Q, mine) {
+    const self = mine.self || {}, words = mine.words || {};
+    return `<form id="reader-self" class="grid" style="gap:12px">
+      <label class="field"><span>How do they want others to describe them in 6 months?</span><input type="text" id="rs-word" maxlength="40" placeholder="e.g. Electric" value="${esc(mine.word || '')}"></label>
+      <div class="table-wrap"><table class="rself"><thead><tr><th>Quality</th><th>Their word</th><th class="n">Score /10</th></tr></thead><tbody>
+      ${Q.map(x => `<tr><td>${esc(qTitle(x))}</td><td><input type="text" maxlength="30" data-rword="${esc(x.key)}" value="${esc(words[x.key] || '')}" aria-label="Their word for ${esc(qLabel(x))}"></td>
+        <td class="n"><input type="number" min="0" max="10" step="0.5" data-rself="${esc(x.key)}" value="${typeof self[x.key] === 'number' ? self[x.key] : ''}" aria-label="Their score for ${esc(qLabel(x))}"></td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="bar"><button class="btn" type="submit">Save self-assessment</button>${mine.selfDate ? `<span class="sub">Last saved ${fmtDate(mine.selfDate)}</span>` : ''}<span class="ok" role="status">${esc(S.msg.rs || '')}</span></div></form>`;
+  }
+  function readerSelfOnly(p, Q, mine) {
+    return `<section class="panel reader"><div class="panel-head"><div><h3>READER profile</h3><p class="sub">No test results yet. Fill in the athlete’s self-assessment to draw their own-score radar.</p></div></div>${readerSelfForm(Q, mine)}</section>`;
   }
 
-  // Data tab: which tests feed each READER letter.
+  // Data tab: which tests feed each READER quality.
   function readerSettings() {
     const Q = G.readerQualities(S.settings);
-    return `<section class="panel"><div class="panel-head"><div><h3>READER tests</h3><p class="sub">Name each letter and tick the tests that make up its score. A test can count towards more than one letter.</p></div></div>
+    return `<section class="panel"><div class="panel-head"><div><h3>READER tests</h3><p class="sub">Name each quality and tick the tests that make up its score. A test can count towards more than one. Qualities with no tests (like Effort and Character) are self-scored only. Clear a name and its tests to hide it.</p></div></div>
       <form id="reader-map" class="grid" style="gap:12px">
-      <div class="form-grid">${Q.map((q, i) => `<label class="field"><span>${esc(q.letter)}</span><input type="text" data-rname="${i}" value="${esc(q.name)}" placeholder="Name this letter"></label>`).join('')}</div>
-      <div class="table-wrap"><table class="rmap"><thead><tr><th>Test</th>${Q.map(q => `<th class="c">${esc(q.letter)}<br><span class="sub">${esc(q.name || '—')}</span></th>`).join('')}</tr></thead><tbody>
-      ${G.METRICS.map(m => `<tr><td>${esc(m.label)}${m.derive ? ' <span class="sub">worked out</span>' : ''}</td>${Q.map((q, i) => `<td class="c"><input type="checkbox" data-rtest="${i}" value="${m.key}" ${q.tests.includes(m.key) ? 'checked' : ''} aria-label="${esc(m.label)} counts towards ${esc(q.letter + ' ' + (q.name || ''))}"></td>`).join('')}</tr>`).join('')}
+      <div class="form-grid">${Q.map((q, i) => `<div class="field"><span>Quality ${i + 1}</span><div style="display:flex;gap:6px"><input type="text" data-rletter="${i}" value="${esc(q.letter || '')}" maxlength="2" placeholder="—" style="width:46px" aria-label="Letter"><input type="text" data-rname="${i}" value="${esc(q.name)}" placeholder="Name" aria-label="Name"></div></div>`).join('')}</div>
+      <div class="table-wrap"><table class="rmap"><thead><tr><th>Test</th>${Q.map(q => `<th class="c">${esc(q.letter || '·')}<br><span class="sub">${esc(q.name || '—')}</span></th>`).join('')}</tr></thead><tbody>
+      ${G.METRICS.map(m => `<tr><td>${esc(m.label)}${m.derive ? ' <span class="sub">worked out</span>' : ''}</td>${Q.map((q, i) => `<td class="c"><input type="checkbox" data-rtest="${i}" value="${m.key}" ${(q.tests || []).includes(m.key) ? 'checked' : ''} aria-label="${esc(m.label)} counts towards ${esc(qTitle(q))}"></td>`).join('')}</tr>`).join('')}
       </tbody></table></div>
       <div class="bar"><button class="btn primary" type="submit">Save READER tests</button><button class="btn" type="button" id="reader-reset">Back to the starting mapping</button><span class="ok" role="status">${esc(S.msg.rm || '')}</span></div></form></section>`;
   }
@@ -2013,6 +2053,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       S.msg = error ? { login: error.message } : { login: 'Check your email for a link to choose a new password.', loginOk: true }; return render();
     }
     const pax = t.closest('[data-paxis]'); if (pax) { S.paxis = pax.dataset.paxis; return render(); }
+    const rvw = t.closest('[data-rview]'); if (rvw) { S.rview = rvw.dataset.rview; return render(); }
     const rax = t.closest('[data-raxis]'); if (rax) { S.raxis = rax.dataset.raxis; return render(); }
     const rq = t.closest('[data-rq]'); if (rq) { S.rq = rq.dataset.rq; return render(); }
     if (t.id === 'rpri-reset') { const p = current(); p.reader = { ...(p.reader || {}) }; delete p.reader.priorities; return persist([p]); }
@@ -2136,13 +2177,15 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       S.msg = {}; return persist([p]);
     }
     if (id === 'reader-self') {
-      const p = current(), self = {};
+      const p = current(), self = {}, words = {};
       $$('[data-rself]').forEach(i => { const v = parseFloat(i.value); if (isFinite(v)) self[i.dataset.rself] = Math.max(0, Math.min(10, v)); });
-      p.reader = { ...(p.reader || {}), word: $('#rs-word').value.trim(), self, selfDate: todayISO() };
+      $$('[data-rword]').forEach(i => { if (i.value.trim()) words[i.dataset.rword] = i.value.trim(); });
+      p.reader = { ...(p.reader || {}), word: $('#rs-word').value.trim(), self, words, selfDate: todayISO() };
       S.msg = { rs: 'Saved.' }; return persist([p]);
     }
     if (id === 'reader-map') {
       const Q = G.readerQualities(S.settings).map((q, i) => ({ ...q,
+        letter: ($(`[data-rletter="${i}"]`).value || '').trim().toUpperCase(),
         name: ($(`[data-rname="${i}"]`).value || '').trim(),
         tests: $$(`[data-rtest="${i}"]`).filter(c => c.checked).map(c => c.value) }));
       S.settings = { ...S.settings, reader: Q }; S.msg = { rm: 'Saved.' }; return persistSettings();
