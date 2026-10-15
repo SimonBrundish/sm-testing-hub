@@ -215,6 +215,25 @@ section.grid, div.grid { display: grid; }
 .gauge { display: grid; gap: 6px; align-content: start; }
 .gauge .chart { min-height: 0; }
 .gauge p.sub { margin: 0; line-height: 1.45; }
+
+/* READER radar */
+.reader .rq { cursor: pointer; outline: none; }
+.chart .reader-x, .chart .rq-l { fill: var(--ink); font: 700 18px var(--font-display); letter-spacing: .02em; }
+.chart .rq-n { fill: var(--ink-2); font: 500 12px var(--font-body); letter-spacing: 0; }
+.chart .rq-s { fill: var(--muted); font: 12px var(--font-body); }
+.chart .rq:hover .rq-l, .chart .rq:focus-visible .rq-l, .chart .rq.on .rq-l { fill: var(--sm-red); }
+.chart .rq.on .rq-n { fill: var(--ink); font-weight: 600; }
+.chart .rq:focus-visible .rq-n { text-decoration: underline; }
+.dot { display: inline-block; width: 8px; height: 8px; border-radius: 50%; margin-right: 6px; vertical-align: 1px; }
+.rmap th.c, .rmap td.c { text-align: center; }
+.rmap th.c { min-width: 64px; white-space: normal; }
+.rq-big { font: 700 44px/1 var(--font-display); color: var(--ink); margin-top: 6px; font-variant-numeric: tabular-nums; }
+.rq-big small { font: 500 13px var(--font-body); color: var(--muted); }
+.rq-stats { display: flex; gap: 28px; flex-wrap: wrap; }
+.chart .rq-solo { fill: var(--ink); font: 700 15px var(--font-display); letter-spacing: .02em; }
+.chart .rq:hover .rq-solo, .chart .rq.on .rq-solo { fill: var(--sm-red); }
+.rself input[type=text] { width: 100%; min-width: 110px; }
+.rself input[type=number] { width: 72px; }
 </style>
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2.117.2/dist/umd/supabase.js"></script>
 <script>window.GM_CONFIG = {"supabaseUrl": "https://msnazqefuanyodfzxlwl.supabase.co", "supabaseKey": "sb_publishable_gm7W42jArEcU-yJF_4C4fQ_X7kopcbF"};</script>
@@ -440,8 +459,43 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     { key: 'broadJump', label: 'Broad jump', unit: 'cm', d: 0, cat: 'Bounce' },
     { key: 'deadliftPower', label: 'TB deadlift power', unit: 'W', d: 0, cat: 'Strength' },
     { key: 'agility', label: 'Raducanu lateral agility', unit: 's', d: 2, cat: 'Agility', lower: true },
-    { key: 'pentagonRatio', label: 'Pentagon crawl ratio', unit: '', d: 2, cat: 'Crawl' }
+    { key: 'pentagonRatio', label: 'Pentagon crawl ratio', unit: '', d: 2, cat: 'Crawl' },
+    // READER battery (Howard's testing sheet). Ratios and deficits are worked out from the raw results when not entered.
+    { key: 'sprint5', label: '5m sprint', unit: 's', d: 2, cat: 'Speed', lower: true },
+    { key: 'codL', label: 'COD left', unit: 's', d: 2, cat: 'Change of direction', lower: true },
+    { key: 'codR', label: 'COD right', unit: 's', d: 2, cat: 'Change of direction', lower: true },
+    { key: 'coddL', label: 'COD deficit left', unit: 's', d: 2, cat: 'Change of direction', lower: true, derive: v => v.codL != null && v.sprint10 != null ? v.codL - v.sprint10 : null },
+    { key: 'coddR', label: 'COD deficit right', unit: 's', d: 2, cat: 'Change of direction', lower: true, derive: v => v.codR != null && v.sprint10 != null ? v.codR - v.sprint10 : null },
+    { key: 'star', label: 'Star drill', unit: 's', d: 2, cat: 'Change of direction', lower: true },
+    { key: 'star3L', label: 'Star 3 left', unit: 's', d: 2, cat: 'Change of direction', lower: true },
+    { key: 'star3R', label: 'Star 3 right', unit: 's', d: 2, cat: 'Change of direction', lower: true },
+    { key: 'hopL', label: 'Hop left', unit: 'cm', d: 0, cat: 'Horizontal' },
+    { key: 'hopR', label: 'Hop right', unit: 'cm', d: 0, cat: 'Horizontal' },
+    { key: 'hop3L', label: 'Triple hop left', unit: 'cm', d: 0, cat: 'Horizontal' },
+    { key: 'hop3R', label: 'Triple hop right', unit: 'cm', d: 0, cat: 'Horizontal' },
+    { key: 'bjRel', label: 'Broad jump / height', unit: '', d: 2, cat: 'Horizontal', derive: (v, h) => v.broadJump != null && h > 0 ? v.broadJump / h : null },
+    { key: 'hopLRel', label: 'Hop left / height', unit: '', d: 2, cat: 'Horizontal', derive: (v, h) => v.hopL != null && h > 0 ? v.hopL / h : null },
+    { key: 'hopRRel', label: 'Hop right / height', unit: '', d: 2, cat: 'Horizontal', derive: (v, h) => v.hopR != null && h > 0 ? v.hopR / h : null },
+    { key: 'hop3LRel', label: 'Triple hop left / height', unit: '', d: 2, cat: 'Horizontal', derive: (v, h) => v.hop3L != null && h > 0 ? v.hop3L / h : null },
+    { key: 'hop3RRel', label: 'Triple hop right / height', unit: '', d: 2, cat: 'Horizontal', derive: (v, h) => v.hop3R != null && h > 0 ? v.hop3R / h : null },
+    { key: 'sj', label: 'Squat jump', unit: 'cm', d: 1, cat: 'Bounce' },
+    { key: 'cmjFree', label: 'CMJ free arms', unit: 'cm', d: 1, cat: 'Bounce' },
+    { key: 'eur', label: 'Eccentric utilisation ratio', unit: '', d: 2, cat: 'Bounce', derive: v => v.cmj != null && v.sj > 0 ? v.cmj / v.sj : null },
+    { key: 'rsi105', label: '10/5 RSI', unit: '', d: 2, cat: 'Bounce' },
+    { key: 'drop30', label: 'Drop jump 30 cm', unit: '', d: 2, cat: 'Bounce' },
+    { key: 'drop40', label: 'Drop jump 40 cm', unit: '', d: 2, cat: 'Bounce' },
+    { key: 'dropDeficit', label: 'Drop jump deficit', unit: '', d: 2, cat: 'Bounce', lower: true },
+    { key: 'tbForceBW', label: 'Trap bar force at body weight', unit: '', d: 2, cat: 'Strength' },
+    { key: 'ballThrow', label: 'Rotational med ball throw', unit: '', d: 1, cat: 'Throw' },
+    { key: 'ift3015', label: '30-15 IFT', unit: 'km/h', d: 1, cat: 'Repeat' },
+    { key: 'borthwick', label: 'Borthwick COD drill', unit: 's', d: 2, cat: 'Repeat', lower: true }
   ];
+  // Ratios and deficits are worked out from the raw results whenever those are there, so they always agree.
+  function withDerived(vals, height) {
+    const v = { ...vals };
+    for (const m of METRICS) if (m.derive) { const x = m.derive(v, height); if (x != null && isFinite(x)) v[m.key] = +x.toFixed(4); }
+    return v;
+  }
   // Norms come from other players' tests (any date) near the same age: a straight line fitted within ±window years,
   // widened once if too few, and the score's distance from that line in standard deviations.
   const NORMS = { window: 1.5, wide: 2.5, minPlayers: 4, minTests: 8, sameSex: true };
@@ -474,7 +528,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
         const size = sizeAt(p.history || [], t.date, t.height);
         const m = size ? assess(p, { date: t.date, height: size.height, mass: size.mass }, s) : null;
         out.push({ pid: p.id, name: p.name, sex: p.sex, squad: p.squad, date: iso(parseDate(t.date)), t: parseDate(t.date).getTime(), ca: decimalAge(p.dob, t.date),
-          ba: m && m.ba != null ? m.ba : null, pct: m ? m.pct : null, statusIdx: m ? m.statusIdx : null, timingIdx: m ? m.timingIdx : null, baDiff: m ? m.baDiff : null, vals: t });
+          ba: m && m.ba != null ? m.ba : null, pct: m ? m.pct : null, statusIdx: m ? m.statusIdx : null, timingIdx: m ? m.timingIdx : null, baDiff: m ? m.baDiff : null, vals: withDerived(t, t.height > 0 ? t.height : size ? size.height : null) });
       }
     }
     return out;
@@ -501,6 +555,67 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       return { players, tests: n, window: w, expected, sd, z, pct: 100 * normCdf(z) };
     }
     return { players: new Set(pool.map(r => r.pid)).size, pct: null };
+  }
+
+  // Fallback when there are too few players of a similar age: rank against every other player's latest result
+  // for the test (same sex where both are known), ignoring age.
+  function percentileInGroup(records, rec, metric, minPlayers = 3) {
+    const v = rec.vals[metric.key]; if (typeof v !== 'number' || !isFinite(v)) return null;
+    const latest = new Map();
+    for (const r of records) {
+      if (r.pid === rec.pid || typeof r.vals[metric.key] !== 'number' || !isFinite(r.vals[metric.key])) continue;
+      if (rec.sex && r.sex && r.sex !== rec.sex) continue;
+      if (!latest.has(r.pid) || latest.get(r.pid).t < r.t) latest.set(r.pid, r);
+    }
+    const others = [...latest.values()].map(r => r.vals[metric.key]), n = others.length;
+    if (n < minPlayers) return { players: n, pct: null };
+    const worse = others.filter(x => metric.lower ? x > v : x < v).length, ties = others.filter(x => x === v).length;
+    return { players: n, tests: n, group: true, pct: 100 * (worse + 0.5 * ties) / n };
+  }
+
+  // ---- READER profile (Howard's tennis athlete model) ----
+  // Each quality scores 0–10: the mean percentile of the tests mapped to it, divided by 10.
+  // Which tests feed which quality is a coach setting (settings.reader) because it is still being decided.
+  const READER_DEFAULT = [
+    // Letters and meanings from the identity report; tests from Howard and Simon's table (14 Oct 2026).
+    // Left/right tests both count; jumps and hops relative to height. Effort and Character are self-scored only.
+    { key: 'resonance', letter: 'R', name: 'Resonance', tests: [] },
+    { key: 'explode', letter: 'E', name: 'Explode', tests: ['cmj', 'rsi105', 'slcmj', 'tbForceBW'] },
+    { key: 'accelerate', letter: 'A', name: 'Accelerate', tests: ['sprint5', 'sprint10', 'star', 'bjRel', 'hopLRel', 'hopRRel'] },
+    { key: 'decelerate', letter: 'D', name: 'Decelerate', tests: ['hop3LRel', 'hop3RRel', 'codL', 'codR', 'dropDeficit'] },
+    { key: 'execute', letter: 'E', name: 'Execute', tests: ['ballThrow'] },
+    { key: 'recover', letter: 'R', name: 'Recover', tests: ['star', 'borthwick'] },
+    { key: 'repeat', letter: '', name: 'Repeat', tests: ['ift3015'] },
+    { key: 'effort', letter: '', name: 'Effort', tests: [] },
+    { key: 'character', letter: '', name: 'Character', tests: [] }
+  ];
+  const READER_RANKS = ['Primary', 'Secondary', 'Tertiary'];
+  const readerQualities = s => (s && Array.isArray(s.reader) && s.reader.length ? s.reader : READER_DEFAULT);
+  // A player's READER profile from their latest result for each test on or before `asOf` (ms; null = all).
+  // Percentiles are by maturity (axis 'ba') or by age ('ca'); a test with no maturity estimate falls back to age,
+  // and one with too few players of a similar age falls back to the whole group.
+  function readerProfile(records, pid, qualities, axis = 'ba', asOf = null) {
+    const mine = records.filter(r => r.pid === pid && (asOf == null || r.t <= asOf)).sort((a, b) => b.t - a.t);
+    if (!mine.length) return null;
+    const cache = {};
+    const testScore = key => {
+      if (cache[key]) return cache[key];
+      const metric = METRICS.find(x => x.key === key);
+      const rec = metric ? mine.find(x => typeof x.vals[key] === 'number' && isFinite(x.vals[key])) : null;
+      if (!rec) return cache[key] = { metric, rec: null, pct: null };
+      let p = percentileAmong(records, rec, metric, axis), used = axis;
+      if ((!p || p.pct == null) && axis === 'ba') { p = percentileAmong(records, rec, metric, 'ca'); used = 'ca'; }
+      if (!p || p.pct == null) { p = percentileInGroup(records, rec, metric); used = 'group'; }
+      return cache[key] = { metric, rec, pr: p, pct: p && p.pct != null ? p.pct : null, axis: used };
+    };
+    const qualities_ = qualities.map(q => {
+      const tests = (q.tests || []).map(testScore).filter(x => x.metric);
+      const got = tests.filter(x => x.pct != null);
+      return { ...q, tests, n: got.length, score: got.length ? got.reduce((a, x) => a + x.pct, 0) / got.length / 10 : null };
+    });
+    const used = qualities_.flatMap(q => q.tests.filter(x => x.rec).map(x => x.rec.t));
+    const ranked = qualities_.filter(q => q.score != null).sort((a, b) => a.score - b.score);
+    return { t: used.length ? Math.max(...used) : mine[0].t, qualities: qualities_, priorities: ranked.slice(0, 3).map(q => q.key) };
   }
 
   // ---- CSV ----
@@ -539,17 +654,33 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     squad: ['squad', 'group', 'team', 'age group', 'agegroup', 'year group', 'cohort'],
     mother: ['mother_height_cm', 'mother height', "mother's height", 'mothers height', 'mothers height (cm)', "mother's height (cm)", 'mother', 'mum height', 'mother height (cm)'],
     father: ['father_height_cm', 'father height', "father's height", 'fathers height', 'fathers height (cm)', "father's height (cm)", 'father', 'dad height', 'father height (cm)'],
-    date: ['date', 'test date', 'testing date', 'assessment date', 'test_date', 'last assessment', 'measurement date', 'date of test'],
+    date: ['date', 'test date', 'testing date', 'assessment date', 'test_date', 'last assessment', 'measurement date', 'date of test', 'period', 'testing period'],
     height: ['height_cm', 'height', 'hieght', 'heigth', 'height cm', 'standing height (cm)', 'standing height', 'height (cm)', 'stature', 'stature (cm)'],
     mass: ['mass_kg', 'mass', 'weight kg', 'wieght', 'weight_kg', 'body mass (kg)', 'body mass', 'weight', 'weight (kg)', 'body weight', 'body weight (kg)', 'mass (kg)'],
     sprint10: ['sprint10', '10m sprint', '10 m sprint', '10m', 'sprint 10', 'sprint 10m', '10m sprint (s)', '10m sprint time'],
     fly30: ['fly30', '30m fly', '30 m fly', 'fly 30', '30m flying sprint', 'flying 30', '30m fly (s)'],
     cmj: ['cmj', 'cmj (cm)', 'countermovement jump', 'counter movement jump', 'cmj height'],
     slcmj: ['slcmj', 'single-leg cmj', 'single leg cmj', 'sl cmj', 'single-leg cmj (cm)', 'single leg cmj (cm)'],
-    broadJump: ['broadjump', 'broad jump', 'broad jump (cm)', 'standing long jump', 'standing broad jump'],
+    broadJump: ['broadjump', 'bj', 'broad jump', 'broad jump (cm)', 'standing long jump', 'standing broad jump'],
     deadliftPower: ['deadliftpower', 'tb deadlift power', 'tb deadlift power (w)', 'trap bar deadlift power', 'deadlift power', 'deadlift power (w)'],
     agility: ['agility', 'raducanu lateral agility', 'raducanu lateral agility (s)', 'lateral agility', 'agility (s)'],
-    pentagonRatio: ['pentagonratio', 'pentagon crawl ratio', 'pentagon ratio', 'pentagon crawl', 'crawl ratio']
+    pentagonRatio: ['pentagonratio', 'pentagon crawl ratio', 'pentagon ratio', 'pentagon crawl', 'crawl ratio'],
+    sprint5: ['sprint5', '5m', '5m sprint', '5 m sprint', '5m split', 'sprint 5m'],
+    codL: ['codl', 'cod l', 'cod left', 'cod (l)'], codR: ['codr', 'cod r', 'cod right', 'cod (r)'],
+    coddL: ['coddl', 'codd l', 'cod deficit l', 'cod deficit left'], coddR: ['coddr', 'codd r', 'cod deficit r', 'cod deficit right'],
+    star: ['star', 'star drill', 'star (s)'], star3L: ['star3l', 'star 3l', 'star 3 l', 'star 3 left'], star3R: ['star3r', 'star 3r', 'star 3 r', 'star 3 right'],
+    hopL: ['hopl', 'hop l', 'hop left', 'single hop l', 'single leg hop l'], hopR: ['hopr', 'hop r', 'hop right', 'single hop r', 'single leg hop r'],
+    hop3L: ['hop3l', '3 hop l', '3hop l', 'triple hop l', 'triple hop left', '3 hop left'], hop3R: ['hop3r', '3 hop r', '3hop r', 'triple hop r', 'triple hop right', '3 hop right'],
+    bjRel: ['bjrel', 'bj / height', 'bj/height', 'broad jump / height', 'broad jump relative to height'],
+    hopLRel: ['hoplrel', 'hop l / height', 'hop l/height'], hopRRel: ['hoprrel', 'hop r / height', 'hop r/height'],
+    hop3LRel: ['hop3lrel', '3hl / height', '3hl/height', '3 hop l / height'], hop3RRel: ['hop3rrel', '3hr / height', '3hr/height', '3 hop r / height'],
+    sj: ['sj', 'squat jump', 'sj (cm)'], cmjFree: ['cmjfree', 'cmj free', 'cmj free arms', 'cmj (free arms)'], eur: ['eur', 'eccentric utilisation ratio', 'eccentric utilization ratio'],
+    rsi105: ['rsi105', '10-5 rsi', '10/5 rsi', '10-5', 'rsi 10/5', 'rsi'], drop30: ['drop30', 'drop 30', 'drop jump 30', 'dj 30'], drop40: ['drop40', 'drop 40', 'drop jump 40', 'dj 40'],
+    dropDeficit: ['dropdeficit', 'drop jump deficit', 'drop deficit', 'dj deficit'],
+    tbForceBW: ['tbforcebw', 'trapbar force at bw', 'trap bar force at bw', 'trap bar force at body weight', 'tb force at bw', 'tb force'],
+    ift3015: ['ift3015', '30-15', '30-15 ift', '30 15', '30:15', '30-15 vift', 'vift'],
+    borthwick: ['borthwick', 'borthwick cod', 'borthwick cod drill', 'borthwick drill'],
+    ballThrow: ['ballthrow', 'ball throw', 'rotational med ball', 'rotational med ball throw', 'med ball throw', 'medicine ball throw', 'rotational throw']
   };
   const normHead = h => String(h ?? '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[’`]/g, "'");
 
@@ -629,7 +760,8 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       if (!p.squad && str('squad')) p.squad = str('squad');
       const date = parseDate(g('date')), h = heightCm(g('height')), m = num(g('mass'));
       const scores = {};
-      for (const mt of METRICS) { const v = map[mt.key] >= 0 ? num(g(mt.key)) : null; if (v != null) scores[mt.key] = v; }
+      // A spreadsheet formula over a blank cell gives 0 (e.g. Hop L / Height with no hop), so a 0 ratio counts as not tested.
+      for (const mt of METRICS) { const v = map[mt.key] >= 0 ? num(g(mt.key)) : null; if (v != null && !(mt.derive && v === 0)) scores[mt.key] = v; }
       const hasScores = Object.keys(scores).length > 0;
       if (date && h > 0 && m > 0) {
         p.assessments = p.assessments.filter(a => a.date !== iso(date)).concat({ date: iso(date), height: h, mass: m });
@@ -704,7 +836,13 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
   const DEMO_PERF = {
     sprint10: { a: 2.05, b: -0.055, boy: -0.02, sd: 0.09 }, fly30: { a: 4.05, b: -0.12, boy: -0.04, sd: 0.17 },
     cmj: { a: 27, b: 2.4, boy: 1.2, sd: 3.5 }, slcmj: { a: 19, b: 1.7, boy: 0.8, sd: 2.6 }, broadJump: { a: 152, b: 9, boy: 4, sd: 11 },
-    deadliftPower: { a: 300, b: 70, boy: 30, sd: 55 }, agility: { a: 5.2, b: -0.18, boy: -0.05, sd: 0.3 }, pentagonRatio: { a: 5.2, b: 0.15, boy: 0, sd: 0.4 }
+    deadliftPower: { a: 300, b: 70, boy: 30, sd: 55 }, agility: { a: 5.2, b: -0.18, boy: -0.05, sd: 0.3 }, pentagonRatio: { a: 5.2, b: 0.15, boy: 0, sd: 0.4 },
+    sprint5: { a: 1.17, b: -0.03, boy: -0.01, sd: 0.06 }, codL: { a: 2.6, b: -0.06, boy: -0.02, sd: 0.1 }, codR: { a: 2.6, b: -0.06, boy: -0.02, sd: 0.1 },
+    star: { a: 17.3, b: -0.4, boy: -0.15, sd: 0.7 }, star3L: { a: 11.6, b: -0.25, boy: -0.1, sd: 0.5 }, star3R: { a: 11.6, b: -0.25, boy: -0.1, sd: 0.5 },
+    hopL: { a: 148, b: 8, boy: 4, sd: 12 }, hopR: { a: 148, b: 8, boy: 4, sd: 12 }, hop3L: { a: 450, b: 25, boy: 12, sd: 35 }, hop3R: { a: 450, b: 25, boy: 12, sd: 35 },
+    sj: { a: 24, b: 2.1, boy: 1.1, sd: 3.2 }, cmjFree: { a: 30, b: 2.6, boy: 1.3, sd: 3.8 }, rsi105: { a: 1.1, b: 0.06, boy: 0.03, sd: 0.15 },
+    drop30: { a: 1.2, b: 0.07, boy: 0.03, sd: 0.18 }, drop40: { a: 1.15, b: 0.07, boy: 0.03, sd: 0.18 }, ballThrow: { a: 22, b: 2.5, boy: 1.5, sd: 3 },
+    dropDeficit: { a: 0.25, b: -0.01, boy: 0, sd: 0.08 }, tbForceBW: { a: 1.9, b: 0.06, boy: 0.03, sd: 0.2 }, ift3015: { a: 15.5, b: 0.5, boy: 0.3, sd: 1 }, borthwick: { a: 21, b: -0.5, boy: -0.2, sd: 1 }
   };
   function demoSquad(today = new Date()) {
     let seed = 20261003;
@@ -745,6 +883,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
           // Test scores track biological more than chronological age, plus a stable individual level.
           const sc = { date: iso(d) };
           METRICS.forEach((m, k) => {
+            if (m.derive) return;
             const g = DEMO_PERF[m.key], z = talent + spread[k] + gauss() * 0.35, boy = sex === 'M' ? Math.max(0, ba - 13) * g.boy : 0;
             const v = g.a + g.b * (ba - 12) + boy + (m.lower ? -1 : 1) * z * g.sd;
             sc[m.key] = +v.toFixed(m.d);
@@ -757,7 +896,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     return players;
   }
 
-  const api = { testingHubRows, testRows, METRICS, NORMS, sizeAt, testRecords, percentileAmong, DEFAULT_SETTINGS, STATUS, TIMING, TEMPO, CI, parseDate, iso, decimalAge, daysBetween, biologicalAge, midparentCm, predictAdultHeight, ciFor, assess, velocity, profile, parseCSV, playersFromCSV, playersFromRows, detectHeader, autoMap, FIELDS, heightCm, rawCSV, resultsCSV, rawRows, resultsRows, toCSV, demoSquad, interpRef };
+  const api = { withDerived, percentileInGroup, READER_DEFAULT, READER_RANKS, readerQualities, readerProfile, testingHubRows, testRows, METRICS, NORMS, sizeAt, testRecords, percentileAmong, DEFAULT_SETTINGS, STATUS, TIMING, TEMPO, CI, parseDate, iso, decimalAge, daysBetween, biologicalAge, midparentCm, predictAdultHeight, ciFor, assess, velocity, profile, parseCSV, playersFromCSV, playersFromRows, detectHeader, autoMap, FIELDS, heightCm, rawCSV, resultsCSV, rawRows, resultsRows, toCSV, demoSquad, interpRef };
   root.GM = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -789,7 +928,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     sort: { key: 'pct', dir: -1 },
     confirm: null, msg: {}, imode: 'add',
     session: { squad: '', date: '', vals: {} },
-    imp: null, metric: 'sprint10', paxis: 'ba'
+    imp: null, metric: 'sprint10', paxis: 'ba', raxis: 'ba', rq: null, rview: 'both'
   };
   const TABS = ['squad', 'player', 'perf', 'record', 'data', 'calculator', 'method'];
 
@@ -832,7 +971,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     }, () => { });
     render();
   }
-  const cleanPlayer = p => JSON.parse(JSON.stringify({ name: p.name, sex: p.sex, dob: p.dob, squad: p.squad || '', mother: p.mother ?? null, father: p.father ?? null, assessments: p.assessments || [], tests: p.tests || [], ...(p.example ? { example: true } : {}) }));
+  const cleanPlayer = p => JSON.parse(JSON.stringify({ name: p.name, sex: p.sex, dob: p.dob, squad: p.squad || '', mother: p.mother ?? null, father: p.father ?? null, assessments: p.assessments || [], tests: p.tests || [], ...(p.reader ? { reader: p.reader } : {}), ...(p.example ? { example: true } : {}) }));
   // ---------- storage on your own site: Supabase, behind a coach sign-in ----------
   async function startSupabase(cfg) {
     if (!window.supabase || !window.supabase.createClient) {
@@ -1115,7 +1254,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     return s + '</svg>';
   }
   const pctTxt = r => r && r.pct != null ? (r.pct < 1 ? '<1' : r.pct > 99 ? '>99' : Math.round(r.pct)) : '—';
-  const pctBar = r => r && r.pct != null ? `<span class="pbar" ${tipAttr(`Better than about ${pctTxt(r)}% of players at that age<br>Compared with ${r.tests} tests from ${r.players} other players`)}><i style="width:${Math.max(2, r.pct)}%"></i></span><span class="num">${pctTxt(r)}</span>` : `<span class="sub" ${r ? tipAttr(`Not enough comparison data yet (${r.players} other player${r.players === 1 ? '' : 's'})`) : ''}>—</span>`;
+  const pctBar = r => r && r.pct != null ? `<span class="pbar" ${tipAttr(r.group ? `Better than about ${pctTxt(r)}% of the other ${r.players} players tested, at any age` : `Better than about ${pctTxt(r)}% of players at that age<br>Compared with ${r.tests} tests from ${r.players} other players`)}><i style="width:${Math.max(2, r.pct)}%"></i></span><span class="num">${pctTxt(r)}</span>` : `<span class="sub" ${r ? tipAttr(`Not enough comparison data yet (${r.players} other player${r.players === 1 ? '' : 's'})`) : ''}>—</span>`;
   const fmtVal = (m, v) => typeof v === 'number' ? v.toFixed(m.d) + (m.unit ? ' ' + m.unit : '') : '—';
   const metricSelect = () => `<label class="field" style="width:230px"><span>Test</span><select id="pm-metric">${[...new Set(G.METRICS.map(m => m.cat))].map(c => `<optgroup label="${esc(c)}">${G.METRICS.filter(m => m.cat === c).map(m => `<option value="${m.key}" ${S.metric === m.key ? 'selected' : ''}>${esc(m.label)}</option>`).join('')}</optgroup>`).join('')}</select></label>`;
   // Latest result per player for a metric, with both percentiles.
@@ -1183,13 +1322,133 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       const a = G.percentileAmong(R, r, m, 'ca'), b = G.percentileAmong(R, r, m, 'ba');
       return `<tr><td><b>${esc(m.label)}</b> <span class="sub">${esc(m.cat)}</span></td><td>${fmtDate(r.date)}</td><td class="n">${fmtVal(m, r.vals[m.key])}</td><td class="pcell">${pctBar(a)}</td><td class="pcell">${pctBar(b)}</td><td class="n">${a?.pct != null && b?.pct != null ? sgn(Math.round(b.pct) - Math.round(a.pct), 0) : '—'}</td></tr>`;
     }).join('');
-    const conf = S.confirm;
+    const conf = S.confirm, MS = G.METRICS.filter(m => mine.some(r => typeof r.vals[m.key] === 'number'));
     const hist = mine.map(r => { const k = 'del-t:' + r.date;
-      return `<tr><td>${fmtDate(r.date)}</td><td class="n">${f(r.ca, 1)}</td><td class="n">${f(r.ba, 1)}</td>${G.METRICS.map(m => `<td class="n">${typeof r.vals[m.key] === 'number' ? r.vals[m.key].toFixed(m.d) : '—'}</td>`).join('')}
+      return `<tr><td>${fmtDate(r.date)}</td><td class="n">${f(r.ca, 1)}</td><td class="n">${f(r.ba, 1)}</td>${MS.map(m => `<td class="n">${typeof r.vals[m.key] === 'number' ? r.vals[m.key].toFixed(m.d) : '—'}</td>`).join('')}
         <td>${conf === k ? `<span class="confirm"><button class="btn small danger" data-del-t="${esc(r.date)}">Delete</button><button class="btn small" data-cancel>Keep</button></span>` : `<button class="btn small" data-ask="${esc(k)}">Remove</button>`}</td></tr>`; }).join('');
     return `<section class="panel"><div class="panel-head"><div><h3>Performance tests</h3><p class="sub">Latest result for each test. Percentile 100 = best, against players the same age and against players at the same stage of growth.</p></div><button class="btn small tab-link" data-goto="perf">Squad view</button></div>
       <div class="table-wrap"><table><thead><tr><th>Test</th><th>Tested</th><th class="n">Result</th><th>By age</th><th>By maturity</th><th class="n">Change</th></tr></thead><tbody>${rows}</tbody></table></div></section>
-      <section class="grid" style="gap:10px"><h3>Test history</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th class="n">Age</th><th class="n">Bio age</th>${G.METRICS.map(m => `<th class="n">${esc(m.label)}${m.unit ? ` <span class="sub">${esc(m.unit)}</span>` : ''}</th>`).join('')}<th></th></tr></thead><tbody>${hist}</tbody></table></div></section>`;
+      <section class="grid" style="gap:10px"><h3>Test history</h3><div class="table-wrap"><table><thead><tr><th>Date</th><th class="n">Age</th><th class="n">Bio age</th>${MS.map(m => `<th class="n">${esc(m.label)}${m.unit ? ` <span class="sub">${esc(m.unit)}</span>` : ''}</th>`).join('')}<th></th></tr></thead><tbody>${hist}</tbody></table></div></section>`;
+  }
+
+  // ---------- READER profile ----------
+  const RANK_COL = ['var(--sm-red)', 'var(--sm-orange)', 'var(--sm-blue)'];
+  const OBJ_COL = 'var(--accent)', SUBJ_COL = 'var(--sm-orange)';
+  const qLabel = q => q.name || 'Not named yet';
+  const qTitle = q => (q.letter ? q.letter + ' · ' : '') + qLabel(q);
+  // Identity benchmarks from the self-assessment report.
+  const bandOf = v => v == null ? '' : v < 3 ? 'Needs attention' : v < 5 ? 'Emerging' : v < 7 ? 'Developing' : v < 9 ? 'Strong' : 'Signature';
+  // Radar: one spoke per quality, scored 0–10 outwards. A spoke with no value is skipped by that shape.
+  function radarChart(W, { axes, series, sel }) {
+    const H = Math.max(300, Math.min(W, 460)), cx = W / 2, cy = H / 2 + 4, R = Math.max(70, Math.min(W / 2 - 84, H / 2 - 46));
+    const n = axes.length, ang = i => -Math.PI / 2 + i * 2 * Math.PI / n;
+    const pt = (i, v) => [cx + Math.cos(ang(i)) * R * v / 10, cy + Math.sin(ang(i)) * R * v / 10].map(z => +z.toFixed(1));
+    if (n < 3) return `<div class="empty">Choose tests for at least three qualities on the Data tab to draw the radar.</div>`;
+    let s = `<svg width="${W}" height="${H}" viewBox="0 0 ${W} ${H}" role="img" aria-label="READER profile">`;
+    for (const v of [2, 4, 6, 8, 10]) s += `<polygon class="grid" fill="none" points="${axes.map((_, i) => pt(i, v).join(',')).join(' ')}"/>`;
+    axes.forEach((_, i) => { const [x, y] = pt(i, 10); s += `<line class="grid" x1="${cx}" y1="${cy}" x2="${x}" y2="${y}"/>`; });
+    for (const v of [5, 10]) s += `<text x="${cx + 4}" y="${cy - R * v / 10 + 12}">${v}</text>`;
+    for (const se of series) {
+      const pts = axes.map((a, i) => se.vals[i] == null ? null : pt(i, Math.max(0.15, Math.min(10, se.vals[i])))).filter(Boolean);
+      if (pts.length > 1) s += `<polygon points="${pts.map(p => p.join(',')).join(' ')}" fill="${se.fill ? se.color : 'none'}" fill-opacity="${se.fill ? 0.14 : 0}" stroke="${se.color}" stroke-width="${se.dash ? 1.5 : 2.25}" ${se.dash ? 'stroke-dasharray="5 4"' : ''} stroke-linejoin="round"/>`;
+      axes.forEach((a, i) => { if (se.vals[i] == null) return; const [x, y] = pt(i, Math.max(0.15, Math.min(10, se.vals[i])));
+        s += `<circle cx="${x}" cy="${y}" r="${se.dash ? 3.5 : 4.5}" fill="${se.dash ? 'var(--surface)' : se.color}" stroke="${se.color}" stroke-width="1.75" ${tipAttr(`<b>${esc(a.title)}</b><br>${esc(se.name)}: ${f(se.vals[i], 1)} / 10${se.words && se.words[i] ? ` · “${esc(se.words[i])}”` : ''}`)}/>`; });
+    }
+    const narrow = W < 480;
+    axes.forEach((a, i) => {
+      const [x, y] = pt(i, 10), c = Math.cos(ang(i)), sn = Math.sin(ang(i)), lx = x + c * 14, ly = y + sn * 16;
+      const anchor = Math.abs(c) < 0.2 ? 'middle' : c > 0 ? 'start' : 'end', on = a.key === sel;
+      const top = ly + (sn < -0.5 ? -16 : sn > 0.5 ? 6 : -6);
+      const head = a.letter ? `${esc(a.letter)}${narrow ? '' : `<tspan class="rq-n" dx="5">${esc(a.name)}</tspan>`}` : `<tspan class="rq-n rq-solo">${esc(narrow ? a.name.slice(0, 9) : a.name)}</tspan>`;
+      s += `<g data-rq="${esc(a.key)}" class="rq${on ? ' on' : ''}" tabindex="0" role="button" aria-label="${esc(a.title)}: show the detail">
+        <text x="${lx}" y="${top}" text-anchor="${anchor}" class="rq-l">${head}</text>
+        <text x="${lx}" y="${top + 16}" text-anchor="${anchor}" class="rq-s">${esc(a.sub)}</text></g>`;
+    });
+    return s + '</svg>';
+  }
+
+  function playerReader(p) {
+    const R = records(), Q = G.readerQualities(S.settings).filter(q => q.name || (q.tests || []).length);
+    const axis = S.raxis === 'ca' ? 'ca' : 'ba';
+    const now = G.readerProfile(R, p.id, Q, axis), prev = now ? G.readerProfile(R, p.id, Q, axis, now.t - 1) : null;
+    const mine = p.reader || {}, self = mine.self || {}, words = mine.words || {};
+    const hasSelf = Q.some(q => typeof self[q.key] === 'number');
+    if (!now && !hasSelf && !R.some(r => r.pid === p.id)) return readerSelfOnly(p, Q, mine);
+    const mode = !now ? 'subj' : !hasSelf ? 'obj' : (S.rview || 'both');
+    const objOf = k => now ? now.qualities.find(x => x.key === k) : null;
+    const prevOf = k => prev ? prev.qualities.find(x => x.key === k) : null;
+    // Objective view shows only qualities that have tests; the others are self-rated only.
+    const shown = Q.filter(q => mode !== 'obj' || (q.tests || []).length);
+    const chosen = (mine.priorities || []).filter(k => Q.some(q => q.key === k));
+    const pri = chosen.length ? chosen : now ? now.priorities : [];
+    const sel = shown.some(q => q.key === S.rq) ? S.rq : (pri.find(k => shown.some(q => q.key === k)) || shown[0].key);
+    const series = [];
+    if (mode !== 'subj' && prev && prev.qualities.some(q => q.score != null)) series.push({ name: 'Previous tests', color: 'var(--muted)', dash: true, vals: shown.map(q => prevOf(q.key)?.score ?? null) });
+    if (mode !== 'obj') series.push({ name: 'Athlete’s own score', color: SUBJ_COL, fill: mode === 'subj', vals: shown.map(q => typeof self[q.key] === 'number' ? self[q.key] : null), words: shown.map(q => words[q.key] || '') });
+    if (mode !== 'subj') series.push({ name: 'Tests', color: OBJ_COL, fill: true, vals: shown.map(q => objOf(q.key)?.score ?? null) });
+    const axes = shown.map(q => {
+      const o = objOf(q.key)?.score, s_ = self[q.key], rank = pri.indexOf(q.key);
+      const w = words[q.key] || '', short = w.length > 13 ? w.slice(0, 12).trim() + '…' : w;
+      const parts = mode === 'subj' ? [short ? `“${short}”` : '', typeof s_ === 'number' ? f(s_, s_ % 1 ? 1 : 0) : 'not scored']
+        : mode === 'obj' ? [o != null ? f(o, 1) : 'not tested', rank >= 0 ? G.READER_RANKS[rank] : '']
+        : [o != null ? 'Tests ' + f(o, 1) : (q.tests || []).length ? 'not tested' : 'self only', typeof s_ === 'number' ? 'Self ' + f(s_, s_ % 1 ? 1 : 0) : ''];
+      return { key: q.key, letter: q.letter, name: qLabel(q), title: qTitle(q), sub: parts.filter(Boolean).join(' · ') };
+    });
+    const chart = chartSlot('reader', W => radarChart(W, { axes, series, sel }));
+    const prevDate = prev ? fmtDate(G.iso(new Date(prev.t))) : '';
+    const lg = `<div class="legend">${mode !== 'subj' ? `<span><i style="background:${OBJ_COL}"></i>Tests</span>` : ''}${mode !== 'obj' ? `<span><i style="background:${SUBJ_COL}"></i>Athlete’s own score</span>` : ''}${series.some(x => x.name === 'Previous tests') ? `<span><i style="background:var(--muted)"></i>Previous tests (${prevDate})</span>` : ''}</div>`;
+
+    const q = Q.find(x => x.key === sel), o = objOf(sel), po = prevOf(sel), sv = self[sel];
+    const rows = o ? o.tests.map(x => `<tr><td><b>${esc(x.metric.label)}</b></td><td>${x.rec ? fmtDate(x.rec.date) : '—'}</td><td class="n">${x.rec ? fmtVal(x.metric, x.rec.vals[x.metric.key]) : '—'}</td><td class="pcell">${x.rec ? pctBar(x.pr) : '<span class="sub">Not tested yet</span>'}</td><td>${x.rec && x.axis !== axis ? `<span class="sub">${x.axis === 'group' ? 'whole group' : 'by age'}</span>` : ''}</td></tr>`).join('') : '';
+    const gap = typeof sv === 'number' && o && o.score != null ? sv - o.score : null;
+    const stat = (label, v, col, extra = '') => `<div><span class="label"><i class="dot" style="background:${col}"></i>${label}</span><div class="rq-big">${v != null ? f(v, v % 1 ? 1 : 0) : '—'}<small> / 10</small></div><span class="sub">${esc(bandOf(v))}${extra}</span></div>`;
+    const detail = `<div class="grid" style="gap:12px;align-content:start">
+      <span class="label">${esc(qTitle(q))}</span>
+      <div class="rq-stats">${(q.tests || []).length ? stat('Tests', o && o.score != null ? +o.score.toFixed(1) : null, OBJ_COL, po && po.score != null && o && o.score != null ? ` · ${sgn(o.score - po.score, 1)} since ${prevDate}` : '') : ''}
+        ${typeof sv === 'number' || !(q.tests || []).length ? stat(words[sel] ? `Own score · “${esc(words[sel])}”` : 'Own score', typeof sv === 'number' ? sv : null, SUBJ_COL) : ''}</div>
+      ${gap != null ? `<p class="sub">${Math.abs(gap) < 1 ? 'Their own score and the tests roughly agree.' : gap > 0 ? `They score themselves ${f(gap, 1)} higher than the tests show.` : `They score themselves ${f(-gap, 1)} lower than the tests show.`}</p>` : ''}
+      ${(q.tests || []).length ? `<div class="table-wrap"><table><thead><tr><th>Test</th><th>Tested</th><th class="n">Result</th><th>Percentile</th><th></th></tr></thead><tbody>${rows || `<tr><td colspan="5" class="empty">No results for these tests yet.</td></tr>`}</tbody></table></div>
+        <p class="sub">Test score = average percentile of the tests with a result ÷ 10.</p>`
+        : `<p class="note">${q.letter ? 'No tests are chosen for this letter yet, so it is self-scored only. Pick its tests under READER tests on the Data tab.' : 'Self-scored only: there is no test for this one.'}</p>`}</div>`;
+
+    const priRows = now ? [0, 1, 2].map(i => `<label class="field"><span><i class="dot" style="background:${RANK_COL[i]}"></i>${G.READER_RANKS[i]}</span><select data-rpri="${i}">
+      ${Q.filter(x => (x.tests || []).length).map(x => { const sq = objOf(x.key); return `<option value="${esc(x.key)}" ${pri[i] === x.key ? 'selected' : ''}>${esc(qTitle(x))}${sq && sq.score != null ? ' (' + f(sq.score, 1) + ')' : ''}</option>`; }).join('')}<option value="" ${!pri[i] ? 'selected' : ''}>None</option></select></label>`).join('') : '';
+    const toggle = now && hasSelf ? `<div class="seg" role="group" aria-label="Show">${[['obj', 'Tests'], ['subj', 'Own scores'], ['both', 'Both']].map(([v, l]) => `<button data-rview="${v}" aria-pressed="${mode === v}">${l}</button>`).join('')}</div>` : '';
+    const axisSeg = now && mode !== 'subj' ? `<div class="seg" role="group" aria-label="Compare tests with"><button data-raxis="ca" aria-pressed="${axis === 'ca'}">By age</button><button data-raxis="ba" aria-pressed="${axis === 'ba'}">By maturity</button></div>` : '';
+    return `<section class="panel reader"><div class="panel-head"><div><h3>READER profile${mine.word ? ` <span class="pill"><i style="background:${SUBJ_COL}"></i>Wants to be known as ${esc(mine.word)}</span>` : ''}</h3>
+        <p class="sub">${mode === 'subj' ? 'The athlete’s own scores out of 10, with the word they chose for each.' : `Test scores are 0–10, compared with players ${axis === 'ba' ? 'at the same stage of growth' : 'the same age'}.${mode === 'both' ? ' The orange shape is how the athlete scores themselves.' : ''}`} Choose a quality to see the detail.</p></div>
+        <div class="bar">${toggle}${axisSeg}</div></div>
+      <div class="grid2"><div>${chart}${lg}</div>${detail}</div>
+      <div class="grid2" style="margin-top:var(--gap)">
+        ${now ? `<section><h3>Priorities for the next block</h3><p class="sub" style="margin-bottom:8px">${chosen.length ? 'Set by a coach.' : 'Suggested from the lowest three test scores.'} Change them if the athlete or coach sees it differently.</p>
+          <div class="form-grid">${priRows}</div>${chosen.length ? '<div class="bar" style="margin-top:8px"><button class="btn small" id="rpri-reset">Use the suggested order</button></div>' : ''}</section>` : '<section></section>'}
+        <section><h3>Self-assessment</h3>${readerSelfForm(Q, mine)}</section></div></section>`;
+  }
+  // The athlete's words and own scores, as on the identity report.
+  function readerSelfForm(Q, mine) {
+    const self = mine.self || {}, words = mine.words || {};
+    return `<form id="reader-self" class="grid" style="gap:12px">
+      <label class="field"><span>How do they want others to describe them in 6 months?</span><input type="text" id="rs-word" maxlength="40" placeholder="e.g. Electric" value="${esc(mine.word || '')}"></label>
+      <div class="table-wrap"><table class="rself"><thead><tr><th>Quality</th><th>Their word</th><th class="n">Score /10</th></tr></thead><tbody>
+      ${Q.map(x => `<tr><td>${esc(qTitle(x))}</td><td><input type="text" maxlength="30" data-rword="${esc(x.key)}" value="${esc(words[x.key] || '')}" aria-label="Their word for ${esc(qLabel(x))}"></td>
+        <td class="n"><input type="number" min="0" max="10" step="0.5" data-rself="${esc(x.key)}" value="${typeof self[x.key] === 'number' ? self[x.key] : ''}" aria-label="Their score for ${esc(qLabel(x))}"></td></tr>`).join('')}
+      </tbody></table></div>
+      <div class="bar"><button class="btn" type="submit">Save self-assessment</button>${mine.selfDate ? `<span class="sub">Last saved ${fmtDate(mine.selfDate)}</span>` : ''}<span class="ok" role="status">${esc(S.msg.rs || '')}</span></div></form>`;
+  }
+  function readerSelfOnly(p, Q, mine) {
+    return `<section class="panel reader"><div class="panel-head"><div><h3>READER profile</h3><p class="sub">No test results yet. Fill in the athlete’s self-assessment to draw their own-score radar.</p></div></div>${readerSelfForm(Q, mine)}</section>`;
+  }
+
+  // Data tab: which tests feed each READER quality.
+  function readerSettings() {
+    const Q = G.readerQualities(S.settings);
+    return `<section class="panel"><div class="panel-head"><div><h3>READER tests</h3><p class="sub">Name each quality and tick the tests that make up its score. A test can count towards more than one. Qualities with no tests (like Effort and Character) are self-scored only. Clear a name and its tests to hide it.</p></div></div>
+      <form id="reader-map" class="grid" style="gap:12px">
+      <div class="form-grid">${Q.map((q, i) => `<div class="field"><span>Quality ${i + 1}</span><div style="display:flex;gap:6px"><input type="text" data-rletter="${i}" value="${esc(q.letter || '')}" maxlength="2" placeholder="—" style="width:46px" aria-label="Letter"><input type="text" data-rname="${i}" value="${esc(q.name)}" placeholder="Name" aria-label="Name"></div></div>`).join('')}</div>
+      <div class="table-wrap"><table class="rmap"><thead><tr><th>Test</th>${Q.map(q => `<th class="c">${esc(q.letter || '·')}<br><span class="sub">${esc(q.name || '—')}</span></th>`).join('')}</tr></thead><tbody>
+      ${G.METRICS.map(m => `<tr><td>${esc(m.label)}${m.derive ? ' <span class="sub">worked out</span>' : ''}</td>${Q.map((q, i) => `<td class="c"><input type="checkbox" data-rtest="${i}" value="${m.key}" ${(q.tests || []).includes(m.key) ? 'checked' : ''} aria-label="${esc(m.label)} counts towards ${esc(qTitle(q))}"></td>`).join('')}</tr>`).join('')}
+      </tbody></table></div>
+      <div class="bar"><button class="btn primary" type="submit">Save READER tests</button><button class="btn" type="button" id="reader-reset">Back to the starting mapping</button><span class="ok" role="status">${esc(S.msg.rm || '')}</span></div></form></section>`;
   }
 
   function viewSquad() {
@@ -1477,7 +1736,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       <form id="edit-p" class="form-grid">${playerFields(p, 'e')}<div class="field" style="align-self:end"><button class="btn" type="submit">Save details</button></div></form>
       <p class="ok" role="status">${esc(S.msg.e || '')}</p></section>`;
 
-    return picker + head + playerGauges(p) + cards + charts + hist + playerPerf(p) + `<div class="grid2">${addForm}${editForm}</div>`;
+    return picker + head + playerGauges(p) + cards + charts + hist + playerReader(p) + playerPerf(p) + `<div class="grid2">${addForm}${editForm}</div>`;
   }
 
   const playerFields = (p = {}, pre) => `
@@ -1655,7 +1914,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
           <label class="field"><span>Re-measure after (days)</span>${numIn('s-stale', st.staleDays, 1)}</label><label class="field"><span>Short interval under (days)</span>${numIn('s-short', st.shortIntervalDays, 1)}</label></div>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="s-self" ${st.parentsSelfReported ? 'checked' : ''}> Parent heights are self-reported (apply the Khamis-Roche adjustment)</label>
           <div><button class="btn" type="submit">Save settings</button> <span class="ok" role="status">${esc(S.msg.s || '')}</span></div></form></section>
-    </div>`;
+    </div>` + readerSettings();
   }
 
   function viewMethod() {
@@ -1794,6 +2053,11 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       S.msg = error ? { login: error.message } : { login: 'Check your email for a link to choose a new password.', loginOk: true }; return render();
     }
     const pax = t.closest('[data-paxis]'); if (pax) { S.paxis = pax.dataset.paxis; return render(); }
+    const rvw = t.closest('[data-rview]'); if (rvw) { S.rview = rvw.dataset.rview; return render(); }
+    const rax = t.closest('[data-raxis]'); if (rax) { S.raxis = rax.dataset.raxis; return render(); }
+    const rq = t.closest('[data-rq]'); if (rq) { S.rq = rq.dataset.rq; return render(); }
+    if (t.id === 'rpri-reset') { const p = current(); p.reader = { ...(p.reader || {}) }; delete p.reader.priorities; return persist([p]); }
+    if (t.id === 'reader-reset') { S.settings = { ...S.settings }; delete S.settings.reader; S.msg = { rm: 'Starting mapping restored.' }; return persistSettings(); }
     const delT = t.closest('[data-del-t]');
     if (delT) { const p = current(); p.tests = (p.tests || []).filter(x => G.iso(G.parseDate(x.date)) !== delT.dataset.delT); S.confirm = null; return persist([p]); }
     const delA = t.closest('[data-del-a]');
@@ -1804,7 +2068,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     if (t.id === 'clear-go') { const ids = S.players.map(p => p.id); S.players = []; S.confirm = null; S.playerId = null; return persist([], ids); }
     if (t.id === 'mig-go') { const { changed } = mergePlayers(store.localOld.map(p => ({ ...p, id: p.id || uid() })), false); store.localOld = []; try { localStorage.setItem(KEY, JSON.stringify({ players: [], filter: S.filter })); } catch (err) { } return persist(changed); }
     if (t.id === 'c-reset') { calc = { ...CALC_DEFAULT }; S.msg.c = ''; return render(); }
-    if (t.id === 'set-reset') { S.settings = { ...G.DEFAULT_SETTINGS }; S.msg.s = 'Defaults restored.'; return persistSettings(); }
+    if (t.id === 'set-reset') { S.settings = { ...G.DEFAULT_SETTINGS, ...(S.settings.reader ? { reader: S.settings.reader } : {}) }; S.msg.s = 'Defaults restored.'; return persistSettings(); }
     if (t.id === 'c-add') {
       const name = calc.name.trim() || 'Unnamed player';
       const a = { date: calc.date, height: +calc.height, mass: +calc.mass };
@@ -1849,7 +2113,10 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       return;
     }
   });
-  document.addEventListener('keydown', e => { if (e.key === 'Enter' && e.target.matches('tr[data-pid]')) openPlayer(e.target.dataset.pid); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Enter' && e.target.matches('tr[data-pid]')) openPlayer(e.target.dataset.pid);
+    if ((e.key === 'Enter' || e.key === ' ') && e.target.matches && e.target.matches('[data-rq]')) { e.preventDefault(); S.rq = e.target.dataset.rq; render(); }
+  });
 
   document.addEventListener('input', e => {
     const t = e.target;
@@ -1876,6 +2143,16 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     if (t.dataset.map) { S.imp.map[t.dataset.map] = +t.value; S.confirm = null; $('#imp-area').innerHTML = importArea(); }
     if (t.id === 'ses-squad') { S.session.squad = t.value; S.msg.ses = ''; render(); }
     if (t.id === 'ses-date') { S.session.date = t.value || todayISO(); render(); }
+    if (t.dataset.rpri != null) {
+      const p = current(), Q = G.readerQualities(S.settings), R = records(), now = G.readerProfile(R, p.id, Q, S.raxis === 'ca' ? 'ca' : 'ba');
+      const pri = ((p.reader && p.reader.priorities && p.reader.priorities.length) ? p.reader.priorities : (now ? now.priorities : [])).slice(0, 3);
+      while (pri.length < 3) pri.push('');
+      const i = +t.dataset.rpri, j = pri.indexOf(t.value);
+      if (t.value && j >= 0 && j !== i) pri[j] = pri[i];   // picking one already used swaps the two
+      pri[i] = t.value;
+      p.reader = { ...(p.reader || {}), priorities: pri.filter(Boolean) };
+      return persist([p]);
+    }
   });
   document.addEventListener('submit', async e => {
     e.preventDefault();
@@ -1899,6 +2176,20 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       p.assessments = p.assessments.filter(a => a.date !== date).concat({ date, height, mass });
       S.msg = {}; return persist([p]);
     }
+    if (id === 'reader-self') {
+      const p = current(), self = {}, words = {};
+      $$('[data-rself]').forEach(i => { const v = parseFloat(i.value); if (isFinite(v)) self[i.dataset.rself] = Math.max(0, Math.min(10, v)); });
+      $$('[data-rword]').forEach(i => { if (i.value.trim()) words[i.dataset.rword] = i.value.trim(); });
+      p.reader = { ...(p.reader || {}), word: $('#rs-word').value.trim(), self, words, selfDate: todayISO() };
+      S.msg = { rs: 'Saved.' }; return persist([p]);
+    }
+    if (id === 'reader-map') {
+      const Q = G.readerQualities(S.settings).map((q, i) => ({ ...q,
+        letter: ($(`[data-rletter="${i}"]`).value || '').trim().toUpperCase(),
+        name: ($(`[data-rname="${i}"]`).value || '').trim(),
+        tests: $$(`[data-rtest="${i}"]`).filter(c => c.checked).map(c => c.value) }));
+      S.settings = { ...S.settings, reader: Q }; S.msg = { rm: 'Saved.' }; return persistSettings();
+    }
     if (id === 'edit-p') {
       const p = current(); const v = readPlayerFields('e');
       if (!v.name || !v.dob) return;
@@ -1917,7 +2208,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       const n = id => parseFloat($('#' + id).value);
       const cuts = [n('s-c0'), n('s-c1'), n('s-c2')];
       if (cuts.some(isNaN) || !(cuts[0] < cuts[1] && cuts[1] < cuts[2])) { S.msg = { s: 'Status cut-offs must increase.' }; return render(); }
-      S.settings = { statusCuts: cuts, timingCuts: [n('s-t0'), n('s-t1')], heightTempo: [n('s-h0'), n('s-h1')], weightTempo: [n('s-w0'), n('s-w1')], staleDays: n('s-stale'), shortIntervalDays: n('s-short'), parentsSelfReported: $('#s-self').checked };
+      S.settings = { ...S.settings, statusCuts: cuts, timingCuts: [n('s-t0'), n('s-t1')], heightTempo: [n('s-h0'), n('s-h1')], weightTempo: [n('s-w0'), n('s-w1')], staleDays: n('s-stale'), shortIntervalDays: n('s-short'), parentsSelfReported: $('#s-self').checked };
       S.msg = { s: 'Saved.' }; return persistSettings();
     }
   });
