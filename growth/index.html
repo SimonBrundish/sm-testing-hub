@@ -896,7 +896,90 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     return players;
   }
 
-  const api = { withDerived, percentileInGroup, READER_DEFAULT, READER_RANKS, readerQualities, readerProfile, testingHubRows, testRows, METRICS, NORMS, sizeAt, testRecords, percentileAmong, DEFAULT_SETTINGS, STATUS, TIMING, TEMPO, CI, parseDate, iso, decimalAge, daysBetween, biologicalAge, midparentCm, predictAdultHeight, ciFor, assess, velocity, profile, parseCSV, playersFromCSV, playersFromRows, detectHeader, autoMap, FIELDS, heightCm, rawCSV, resultsCSV, rawRows, resultsRows, toCSV, demoSquad, interpRef };
+  // ---------- Output Sports ----------
+  // Rows synced into Supabase by the output-sync edge function (gm_output_*), turned into dashboard test results.
+  // A mapping says which Output result feeds which dashboard test: {'<exerciseId>|<variant>|<field>': metricKey}.
+  const unitName = u => String(u || '').trim().toLowerCase().replace(/^(metres?|meters?)$/, 'm').replace(/^(centimetres?|centimeters?)$/, 'cm')
+    .replace(/^(millimetres?|millimeters?)$/, 'mm').replace(/^(milliseconds?|msecs?)$/, 'ms').replace(/^(seconds?|secs?|sec)$/, 's').replace(/^(watts?)$/, 'w');
+  const UNIT_SCALE = { 'm>cm': 100, 'mm>cm': 0.1, 'ms>s': 0.001, 'kw>w': 1000, 'm/s>km/h': 3.6 };
+  function outputScale(from, to) { const f = unitName(from), t = unitName(to); return !f || !t || f === t ? 1 : UNIT_SCALE[f + '>' + t] || 1; }
+  // Every Output exercise + variant + result field that has data, with its name and unit from the exercise definitions.
+  function outputColumns(exercises, measurements) {
+    const ex = new Map((exercises || []).map(e => [String(e.id), e]));
+    const cols = new Map();
+    for (const m of measurements || []) for (const field of Object.keys(m.metrics || {})) {
+      const key = `${m.exercise_id}|${m.variant || ''}|${field}`;
+      if (cols.has(key)) { cols.get(key).count++; continue; }
+      const e = ex.get(String(m.exercise_id)), d = (e && e.data) || {};
+      const meta = [...(d.metrics || []), ...(d.roundMetrics || [])].find(x => x.field === field) || {};
+      cols.set(key, { key, exerciseId: String(m.exercise_id), exercise: (e && e.name) || d.name || 'Exercise ' + m.exercise_id, variant: m.variant || '', field, metric: meta.name || field, unit: meta.unitOfMeasure || '', count: 1 });
+    }
+    return [...cols.values()].sort((a, b) => a.exercise.localeCompare(b.exercise) || a.variant.localeCompare(b.variant) || a.metric.localeCompare(b.metric));
+  }
+  // A starting guess for the common tests; coaches confirm or change it on the Data tab.
+  const OUTPUT_GUESS = [
+    [/single|one.?leg|\bsl\b/, /counter.?movement|\bcmj\b/, /jump height/, 'slcmj'],
+    [null, /counter.?movement|\bcmj\b/, /jump height/, 'cmj'],
+    [null, /squat jump|\bsj\b/, /jump height/, 'sj'],
+    [null, /10.?5|repeat(ed)? (hop|jump)|rebound/, /\brsi\b|reactive strength/, 'rsi105'],
+    [null, /broad jump|standing long jump/, /distance|length/, 'broadJump'],
+    [null, /sprint|dash/, /\b5 ?m\b/, 'sprint5'],
+    [null, /sprint|dash/, /\b10 ?m\b/, 'sprint10']
+  ];
+  function outputGuess(col) {
+    const ex = (col.exercise + ' ' + col.variant).toLowerCase(), mt = (col.metric + ' ' + col.field).toLowerCase();
+    const hit = OUTPUT_GUESS.find(([only, e, m]) => (!only || only.test(ex)) && e.test(ex) && m.test(mt));
+    return hit ? hit[3] : '';
+  }
+  const plainName = n => String(n || '').normalize('NFD').replace(/[̀-ͯ]/g, '').trim().toLowerCase().replace(/\s+/g, ' ');
+  // Which dashboard player each Output athlete is: Output's external id set to the player's id, else name and date of birth,
+  // else the name alone when it is unique and one side has no date of birth.
+  function outputMatch(athletes, players) {
+    const real = players.filter(p => !p.example), byId = new Map(real.map(p => [p.id, p])), out = new Map();
+    for (const a of athletes || []) {
+      const name = plainName(a.full_name || [a.first_name, a.last_name].filter(Boolean).join(' '));
+      const same = real.filter(p => plainName(p.name) === name);
+      const p = (a.external_id && byId.get(a.external_id)) || same.find(p => a.dob && p.dob === a.dob)
+        || (same.length === 1 && (!a.dob || !same[0].dob) ? same[0] : null);
+      if (p) out.set(String(a.id), p);
+    }
+    return out;
+  }
+  // Players whose tests change when the mapped Output results are added. The best result of the day counts for each test;
+  // results already on a test date are overwritten, other tests on that date are kept.
+  function outputMerge({ athletes, measurements, columns, map, players }) {
+    const metric = new Map(METRICS.map(m => [m.key, m])), colOf = new Map((columns || []).map(c => [c.key, c]));
+    const who = outputMatch(athletes, players), best = new Map();
+    const unmatched = new Map();
+    for (const m of measurements || []) {
+      const p = who.get(String(m.athlete_id));
+      for (const [field, raw] of Object.entries(m.metrics || {})) {
+        const key = `${m.exercise_id}|${m.variant || ''}|${field}`, mk = map[key], mt = metric.get(mk);
+        if (!mt || mt.derive) continue;
+        if (!p) { unmatched.set(String(m.athlete_id), (unmatched.get(String(m.athlete_id)) || 0) + 1); continue; }
+        const v = +raw * outputScale((colOf.get(key) || {}).unit, mt.unit);
+        if (!isFinite(v)) continue;
+        const date = String(m.completed_at).slice(0, 10), k = p.id + '|' + date + '|' + mk;
+        const was = best.get(k);
+        if (!was || (mt.lower ? v < was.v : v > was.v)) best.set(k, { p, date, mk, v: +v.toFixed(Math.max(mt.d, 2)) });
+      }
+    }
+    const changed = new Map(); let values = 0;
+    for (const { p, date, mk, v } of best.values()) {
+      const cur = changed.get(p.id) || { ...p, tests: (p.tests || []).map(t => ({ ...t })) };
+      let t = cur.tests.find(x => x.date === date);
+      if (t && t[mk] === v) continue;
+      if (!t) { t = { date }; cur.tests.push(t); }
+      t[mk] = v; values++; changed.set(p.id, cur);
+    }
+    const byId = new Map((athletes || []).map(a => [String(a.id), a]));
+    return {
+      players: [...changed.values()], values, matched: who.size,
+      unmatched: [...unmatched].map(([id, n]) => { const a = byId.get(id) || {}; return { id, name: a.full_name || [a.first_name, a.last_name].filter(Boolean).join(' ') || 'Athlete ' + id, dob: a.dob || '', results: n }; })
+    };
+  }
+
+  const api = { outputScale, outputColumns, outputGuess, outputMatch, outputMerge, withDerived, percentileInGroup, READER_DEFAULT, READER_RANKS, readerQualities, readerProfile, testingHubRows, testRows, METRICS, NORMS, sizeAt, testRecords, percentileAmong, DEFAULT_SETTINGS, STATUS, TIMING, TEMPO, CI, parseDate, iso, decimalAge, daysBetween, biologicalAge, midparentCm, predictAdultHeight, ciFor, assess, velocity, profile, parseCSV, playersFromCSV, playersFromRows, detectHeader, autoMap, FIELDS, heightCm, rawCSV, resultsCSV, rawRows, resultsRows, toCSV, demoSquad, interpRef };
   root.GM = api;
   if (typeof module !== 'undefined') module.exports = api;
 })(typeof window !== 'undefined' ? window : globalThis);
@@ -992,7 +1075,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       const was = store.user && store.user.id;
       store.user = session ? session.user : null;
       if (store.user && store.user.id !== was) loadSupabase();
-      if (!store.user) { S.players = []; S.loaded = false; S.notCoach = false; if (store.channel) { sb.removeChannel(store.channel); store.channel = null; } render(); }
+      if (!store.user) { S.players = []; S.loaded = false; S.notCoach = false; S.out = null; if (store.channel) { sb.removeChannel(store.channel); store.channel = null; } render(); }
     });
     const { data } = await sb.auth.getSession();
     store.user = data && data.session ? data.session.user : null;
@@ -1876,6 +1959,74 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
         ${S.confirm === 'imp-replace' ? `<span class="confirm"><span class="err">This deletes the ${S.players.length} players already here.</span><button class="btn danger" id="imp-go-confirm">Replace everything</button><button class="btn" data-cancel>Cancel</button></span>` : `<button class="btn primary" id="imp-go" ${res.players.length ? '' : 'disabled'}>Import ${res.players.length} players</button>`}</div>`}
     </div>`;
   }
+  // ---------- Output Sports (website build with coach login only) ----------
+  // The output-sync edge function copies Output results into gm_output_* every morning; coaches choose which results
+  // feed which dashboard test and add them to the players here.
+  async function selectAll(q) {
+    const rows = [];
+    for (let from = 0; ; from += 1000) {
+      const { data, error } = await q().range(from, from + 999);
+      if (error) throw error;
+      rows.push(...data); if (data.length < 1000) return rows;
+    }
+  }
+  async function loadOutput() {
+    const sb = store.sb; S.out = { ...(S.out || {}), loading: true };
+    try {
+      const [athletes, exercises, measurements, sync] = await Promise.all([
+        selectAll(() => sb.from('gm_output_athletes').select('id,external_id,first_name,last_name,full_name,dob').order('id')),
+        selectAll(() => sb.from('gm_output_exercises').select('id,kind,name,data').order('id')),
+        selectAll(() => sb.from('gm_output_measurements').select('id,athlete_id,exercise_id,completed_at,variant,metrics').order('id')),
+        sb.from('gm_output_sync').select('*').eq('id', 'state').maybeSingle()]);
+      S.out = { athletes, exercises, measurements, sync: sync.data, columns: G.outputColumns(exercises, measurements), loaded: true };
+    } catch (e) {
+      // Before output-setup.sql has been run the tables do not exist yet.
+      S.out = { loaded: true, missing: /does not exist|schema cache/i.test(e.message || ''), error: e.message || String(e) };
+    }
+    renderSoft();
+  }
+  // Saved choices win; results nobody has chosen for yet start from a guess ('' means not used).
+  const outputMap = () => ({ ...Object.fromEntries((S.out.columns || []).map(c => [c.key, G.outputGuess(c)])), ...(S.settings.outputMap || {}) });
+  const outputPending = () => G.outputMerge({ ...S.out, map: outputMap(), players: S.players });
+  function outputPanel() {
+    if (store.mode !== 'supa') return '';
+    if (!S.out || (!S.out.loaded && !S.out.loading)) loadOutput();
+    const o = S.out, head = `<div class="panel-head"><div><h3>Output Sports</h3><p class="sub">Test results come across from Output every morning. Choose which Output result feeds each dashboard test, then add them to the players.</p></div>
+      ${o.missing ? '' : `<button class="btn small" id="out-sync" ${o.syncing ? 'disabled' : ''}>${o.syncing ? 'Syncing…' : 'Sync now'}</button>`}</div>`;
+    if (!o.loaded) return `<section class="panel">${head}<p class="sub">Loading Output results…</p></section>`;
+    if (o.missing) return `<section class="panel">${head}<p class="note">The Output connection is not set up yet. Your developer needs to follow <b>supabase/OUTPUT-SYNC.md</b>.</p></section>`;
+    const sy = o.sync || {}, msg = S.msg.out || '';
+    const status = `<p class="sub">${sy.last_ok ? `Last synced ${new Date(sy.last_ok).toLocaleString('en-GB', { day: 'numeric', month: 'short', hour: '2-digit', minute: '2-digit' })}` : 'Not synced yet'} · ${(o.athletes || []).length} Output athletes · ${(o.measurements || []).length} results</p>
+      ${o.error || (sy.last_error && (!sy.last_ok || sy.last_run > sy.last_ok)) ? `<p class="err">${esc(o.error || 'The last sync failed: ' + sy.last_error)}</p>` : ''}`;
+    if (!(o.columns || []).length) return `<section class="panel">${head}${status}<p class="note" style="margin-top:8px">No Output results yet. Press Sync now, or wait for tomorrow morning's sync.</p><p role="status">${msg}</p></section>`;
+    const map = outputMap(), pend = outputPending(), saved = o.columns.every(c => (S.settings.outputMap || {})[c.key] != null);
+    const opts = G.METRICS.filter(m => !m.derive);
+    return `<section class="panel">${head}${status}
+      <form id="out-map" style="display:grid;gap:12px;margin-top:10px">
+      <div class="table-wrap"><table><thead><tr><th>Output test</th><th>Result</th><th class="c">Unit</th><th class="c">Results</th><th>Dashboard test</th></tr></thead><tbody>
+      ${o.columns.map(c => `<tr><td>${esc(c.exercise)}${c.variant ? ` <span class="sub">${esc(c.variant)}</span>` : ''}</td><td>${esc(c.metric)}</td><td class="c">${esc(c.unit)}</td><td class="c">${c.count}</td>
+        <td><select data-outmap="${esc(c.key)}" aria-label="Dashboard test for ${esc(c.exercise + ' ' + c.metric)}"><option value="">Not used</option>${opts.map(m => `<option value="${m.key}" ${map[c.key] === m.key ? 'selected' : ''}>${esc(m.label)}${m.unit ? ' (' + esc(m.unit) + ')' : ''}</option>`).join('')}</select></td></tr>`).join('')}
+      </tbody></table></div>
+      <p class="sub">${saved ? '' : 'New Output results start from a guess: check them and save. '}Units are converted to the dashboard's (metres to cm, milliseconds to seconds). If a player does the same test more than once in a day, the best result counts.</p>
+      <div class="bar"><button class="btn" type="submit">Save choices</button>
+        <button class="btn primary" type="button" id="out-apply" ${pend.values ? '' : 'disabled'}>${pend.values ? `Add ${pend.values} new result${pend.values === 1 ? '' : 's'} to ${pend.players.length} player${pend.players.length === 1 ? '' : 's'}` : 'Players are up to date'}</button>
+        <span role="status">${msg}</span></div></form>
+      ${pend.unmatched.length ? `<details style="margin-top:12px"><summary>${pend.unmatched.length} Output athlete${pend.unmatched.length === 1 ? ' is' : 's are'} not matched to a player</summary>
+        <p class="sub" style="margin:6px 0">Name and date of birth must be the same in Output and here. Fix one side, or add the player first.</p>
+        <ul>${pend.unmatched.map(u => `<li>${esc(u.name)}${u.dob ? ' · born ' + fmtDate(u.dob) : ''} · ${u.results} result${u.results === 1 ? '' : 's'}</li>`).join('')}</ul></details>` : ''}
+    </section>`;
+  }
+  async function outputSync() {
+    S.out.syncing = true; S.msg.out = ''; renderSoft();
+    const { data, error } = await store.sb.functions.invoke('output-sync', { body: {} });
+    let why = error && error.message;
+    if (error && error.context && error.context.json) { try { why = (await error.context.json()).error || why; } catch (e) { } }
+    S.out.syncing = false;
+    await loadOutput();
+    S.msg.out = error ? `<span class="err">Sync failed: ${esc(why)}</span>` : `<span class="ok">Synced ${data.measurements} result${data.measurements === 1 ? '' : 's'}.</span>`;
+    renderSoft();
+  }
+
   function viewData() {
     const examples = S.players.filter(p => p.example).length;
     const st = S.settings, conf = S.confirm;
@@ -1914,7 +2065,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
           <label class="field"><span>Re-measure after (days)</span>${numIn('s-stale', st.staleDays, 1)}</label><label class="field"><span>Short interval under (days)</span>${numIn('s-short', st.shortIntervalDays, 1)}</label></div>
           <label style="display:flex;gap:8px;align-items:center"><input type="checkbox" id="s-self" ${st.parentsSelfReported ? 'checked' : ''}> Parent heights are self-reported (apply the Khamis-Roche adjustment)</label>
           <div><button class="btn" type="submit">Save settings</button> <span class="ok" role="status">${esc(S.msg.s || '')}</span></div></form></section>
-    </div>` + readerSettings();
+    </div>` + outputPanel() + readerSettings();
   }
 
   function viewMethod() {
@@ -2045,6 +2196,12 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     const ask = t.closest('[data-ask]'); if (ask) { S.confirm = ask.dataset.ask; return render(); }
     if (t.closest('[data-cancel]')) { S.confirm = null; return render(); }
     if (t.id === 'err-x') { store.error = ''; return render(); }
+    if (t.id === 'out-sync' && store.sb) return outputSync();
+    if (t.id === 'out-apply') {
+      // Use the choices on screen, saved first, so what is added matches what the coach sees.
+      const map = { ...(S.settings.outputMap || {}) }; $$('[data-outmap]').forEach(sel => { map[sel.dataset.outmap] = sel.value; });
+      S.settings = { ...S.settings, outputMap: map }; await persistSettings();
+      const pend = outputPending(); S.msg.out = `<span class="ok">Added ${pend.values} result${pend.values === 1 ? '' : 's'} to ${pend.players.length} player${pend.players.length === 1 ? '' : 's'}.</span>`; for (const np of pend.players) { const i = S.players.findIndex(x => x.id === np.id); if (i >= 0) S.players[i] = np; } return persist(pend.players); }
     if (t.id === 'sign-out' && store.sb) { await store.sb.auth.signOut(); S.msg = {}; return; }
     if (t.id === 'lg-forgot' && store.sb) {
       const email = $('#lg-email').value.trim(); S.loginEmail = email;
@@ -2068,7 +2225,7 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     if (t.id === 'clear-go') { const ids = S.players.map(p => p.id); S.players = []; S.confirm = null; S.playerId = null; return persist([], ids); }
     if (t.id === 'mig-go') { const { changed } = mergePlayers(store.localOld.map(p => ({ ...p, id: p.id || uid() })), false); store.localOld = []; try { localStorage.setItem(KEY, JSON.stringify({ players: [], filter: S.filter })); } catch (err) { } return persist(changed); }
     if (t.id === 'c-reset') { calc = { ...CALC_DEFAULT }; S.msg.c = ''; return render(); }
-    if (t.id === 'set-reset') { S.settings = { ...G.DEFAULT_SETTINGS, ...(S.settings.reader ? { reader: S.settings.reader } : {}) }; S.msg.s = 'Defaults restored.'; return persistSettings(); }
+    if (t.id === 'set-reset') { S.settings = { ...G.DEFAULT_SETTINGS, ...(S.settings.reader ? { reader: S.settings.reader } : {}), ...(S.settings.outputMap ? { outputMap: S.settings.outputMap } : {}) }; S.msg.s = 'Defaults restored.'; return persistSettings(); }
     if (t.id === 'c-add') {
       const name = calc.name.trim() || 'Unnamed player';
       const a = { date: calc.date, height: +calc.height, mass: +calc.mass };
@@ -2182,6 +2339,11 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
       $$('[data-rword]').forEach(i => { if (i.value.trim()) words[i.dataset.rword] = i.value.trim(); });
       p.reader = { ...(p.reader || {}), word: $('#rs-word').value.trim(), self, words, selfDate: todayISO() };
       S.msg = { rs: 'Saved.' }; return persist([p]);
+    }
+    if (id === 'out-map') {
+      const map = { ...(S.settings.outputMap || {}) }; $$('[data-outmap]').forEach(sel => { map[sel.dataset.outmap] = sel.value; });
+      S.settings = { ...S.settings, outputMap: map };
+      S.msg = { out: '<span class="ok">Saved.</span>' }; return persistSettings();
     }
     if (id === 'reader-map') {
       const Q = G.readerQualities(S.settings).map((q, i) => ({ ...q,
