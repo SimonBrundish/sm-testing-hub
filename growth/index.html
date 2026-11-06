@@ -451,6 +451,8 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
 
 
   // ---- Performance testing (Testing Hub metrics) normed by age and by maturity ----
+  // Side-to-side difference as a % of the larger side.
+  const asym = (a, b) => a != null && b != null && Math.max(a, b) > 0 ? Math.abs(a - b) / Math.max(a, b) * 100 : null;
   const METRICS = [
     { key: 'sprint10', label: '10m sprint', unit: 's', d: 2, cat: 'Speed', lower: true },
     { key: 'fly30', label: '30m fly', unit: 's', d: 2, cat: 'Speed', lower: true },
@@ -488,7 +490,53 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     { key: 'tbForceBW', label: 'Trap bar force at body weight', unit: '', d: 2, cat: 'Strength' },
     { key: 'ballThrow', label: 'Rotational med ball throw', unit: '', d: 1, cat: 'Throw' },
     { key: 'ift3015', label: '30-15 IFT', unit: 'km/h', d: 1, cat: 'Repeat' },
-    { key: 'borthwick', label: 'Borthwick COD drill', unit: 's', d: 2, cat: 'Repeat', lower: true }
+    { key: 'borthwick', label: 'Borthwick COD drill', unit: 's', d: 2, cat: 'Repeat', lower: true },
+    // Tennis Physical Adaptation Profile (Howard's idea, 2026-11). Dominant = racket arm. Differences are % of the larger side.
+    { key: 'shIRD', label: 'Shoulder IR range, dominant', unit: '°', d: 0, cat: 'Tennis profile: shoulder' },
+    { key: 'shIRN', label: 'Shoulder IR range, non-dominant', unit: '°', d: 0, cat: 'Tennis profile: shoulder' },
+    { key: 'shERD', label: 'Shoulder ER range, dominant', unit: '°', d: 0, cat: 'Tennis profile: shoulder' },
+    { key: 'shERN', label: 'Shoulder ER range, non-dominant', unit: '°', d: 0, cat: 'Tennis profile: shoulder' },
+    { key: 'shTRD', label: 'Shoulder total range, dominant', unit: '°', d: 0, cat: 'Tennis profile: shoulder', derive: v => v.shIRD != null && v.shERD != null ? v.shIRD + v.shERD : null },
+    { key: 'shTRN', label: 'Shoulder total range, non-dominant', unit: '°', d: 0, cat: 'Tennis profile: shoulder', derive: v => v.shIRN != null && v.shERN != null ? v.shIRN + v.shERN : null },
+    { key: 'shTRDiff', label: 'Shoulder total range difference', unit: '°', d: 0, cat: 'Tennis profile: shoulder', lower: true, derive: v => v.shTRD != null && v.shTRN != null ? Math.abs(v.shTRD - v.shTRN) : null },
+    { key: 'shGIRD', label: 'IR loss vs other arm', unit: '°', d: 0, cat: 'Tennis profile: shoulder', lower: true, derive: v => v.shIRD != null && v.shIRN != null ? v.shIRN - v.shIRD : null },
+    { key: 'shERsD', label: 'Shoulder ER strength, dominant', unit: 'N', d: 0, cat: 'Tennis profile: shoulder' },
+    { key: 'shERsN', label: 'Shoulder ER strength, non-dominant', unit: 'N', d: 0, cat: 'Tennis profile: shoulder' },
+    { key: 'shIRsD', label: 'Shoulder IR strength, dominant', unit: 'N', d: 0, cat: 'Tennis profile: shoulder' },
+    { key: 'shIRsN', label: 'Shoulder IR strength, non-dominant', unit: 'N', d: 0, cat: 'Tennis profile: shoulder' },
+    { key: 'shERIRD', label: 'ER:IR strength ratio, dominant', unit: '', d: 2, cat: 'Tennis profile: shoulder', derive: v => v.shERsD != null && v.shIRsD > 0 ? v.shERsD / v.shIRsD : null },
+    { key: 'shERIRN', label: 'ER:IR strength ratio, non-dominant', unit: '', d: 2, cat: 'Tennis profile: shoulder', derive: v => v.shERsN != null && v.shIRsN > 0 ? v.shERsN / v.shIRsN : null },
+    { key: 'trRotL', label: 'Trunk rotation strength, to left', unit: 'N', d: 0, cat: 'Tennis profile: trunk' },
+    { key: 'trRotR', label: 'Trunk rotation strength, to right', unit: 'N', d: 0, cat: 'Tennis profile: trunk' },
+    { key: 'trRotAsym', label: 'Trunk rotation difference', unit: '%', d: 1, cat: 'Tennis profile: trunk', lower: true, derive: v => asym(v.trRotL, v.trRotR) },
+    { key: 'mbFH', label: 'Med ball forehand side throw', unit: 'm', d: 1, cat: 'Tennis profile: trunk' },
+    { key: 'mbBH', label: 'Med ball backhand side throw', unit: 'm', d: 1, cat: 'Tennis profile: trunk' },
+    { key: 'mbAsym', label: 'Med ball forehand/backhand difference', unit: '%', d: 1, cat: 'Tennis profile: trunk', lower: true, derive: v => asym(v.mbFH, v.mbBH) },
+    { key: 'hipIRL', label: 'Hip IR range, left', unit: '°', d: 0, cat: 'Tennis profile: hip and legs' },
+    { key: 'hipIRR', label: 'Hip IR range, right', unit: '°', d: 0, cat: 'Tennis profile: hip and legs' },
+    { key: 'hipERL', label: 'Hip ER range, left', unit: '°', d: 0, cat: 'Tennis profile: hip and legs' },
+    { key: 'hipERR', label: 'Hip ER range, right', unit: '°', d: 0, cat: 'Tennis profile: hip and legs' },
+    { key: 'hipIRDiff', label: 'Hip IR range difference', unit: '°', d: 0, cat: 'Tennis profile: hip and legs', lower: true, derive: v => v.hipIRL != null && v.hipIRR != null ? Math.abs(v.hipIRL - v.hipIRR) : null },
+    { key: 'addL', label: 'Adductor squeeze, left', unit: 'N', d: 0, cat: 'Tennis profile: hip and legs' },
+    { key: 'addR', label: 'Adductor squeeze, right', unit: 'N', d: 0, cat: 'Tennis profile: hip and legs' },
+    { key: 'abdL', label: 'Abductor strength, left', unit: 'N', d: 0, cat: 'Tennis profile: hip and legs' },
+    { key: 'abdR', label: 'Abductor strength, right', unit: 'N', d: 0, cat: 'Tennis profile: hip and legs' },
+    { key: 'addAbdL', label: 'Adductor:abductor ratio, left', unit: '', d: 2, cat: 'Tennis profile: hip and legs', derive: v => v.addL != null && v.abdL > 0 ? v.addL / v.abdL : null },
+    { key: 'addAbdR', label: 'Adductor:abductor ratio, right', unit: '', d: 2, cat: 'Tennis profile: hip and legs', derive: v => v.addR != null && v.abdR > 0 ? v.addR / v.abdR : null },
+    { key: 'slcmjL', label: 'Single-leg CMJ left', unit: 'cm', d: 1, cat: 'Tennis profile: hip and legs' },
+    { key: 'slcmjR', label: 'Single-leg CMJ right', unit: 'cm', d: 1, cat: 'Tennis profile: hip and legs' },
+    { key: 'slcmjAsym', label: 'Single-leg CMJ difference', unit: '%', d: 1, cat: 'Tennis profile: hip and legs', lower: true, derive: v => asym(v.slcmjL, v.slcmjR) },
+    { key: 'hopAsym', label: 'Hop difference', unit: '%', d: 1, cat: 'Tennis profile: hip and legs', lower: true, derive: v => asym(v.hopL, v.hopR) },
+    { key: 'hop3Asym', label: 'Triple hop difference', unit: '%', d: 1, cat: 'Tennis profile: hip and legs', lower: true, derive: v => asym(v.hop3L, v.hop3R) },
+    { key: 'codAsym', label: 'COD left/right difference', unit: '%', d: 1, cat: 'Tennis profile: hip and legs', lower: true, derive: v => asym(v.codL, v.codR) },
+    { key: 'calfL', label: 'Single-leg calf raises, left', unit: 'reps', d: 0, cat: 'Tennis profile: hip and legs', min: 0 },
+    { key: 'calfR', label: 'Single-leg calf raises, right', unit: 'reps', d: 0, cat: 'Tennis profile: hip and legs', min: 0 },
+    { key: 'calfAsym', label: 'Calf raise difference', unit: '%', d: 1, cat: 'Tennis profile: hip and legs', lower: true, derive: v => asym(v.calfL, v.calfR) },
+    { key: 'gripD', label: 'Grip strength, dominant', unit: 'kg', d: 1, cat: 'Tennis profile: forearm' },
+    { key: 'gripN', label: 'Grip strength, non-dominant', unit: 'kg', d: 1, cat: 'Tennis profile: forearm' },
+    { key: 'wristD', label: 'Wrist extension strength, dominant', unit: 'N', d: 0, cat: 'Tennis profile: forearm' },
+    { key: 'wristN', label: 'Wrist extension strength, non-dominant', unit: 'N', d: 0, cat: 'Tennis profile: forearm' },
+    { key: 'painMax', label: 'Highest pain score, last 7 days', unit: '/10', d: 0, cat: 'Tennis profile: symptoms', lower: true, min: 0, max: 10 }
   ];
   // Ratios and deficits are worked out from the raw results whenever those are there, so they always agree.
   function withDerived(vals, height) {
@@ -680,7 +728,52 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     tbForceBW: ['tbforcebw', 'trapbar force at bw', 'trap bar force at bw', 'trap bar force at body weight', 'tb force at bw', 'tb force'],
     ift3015: ['ift3015', '30-15', '30-15 ift', '30 15', '30:15', '30-15 vift', 'vift'],
     borthwick: ['borthwick', 'borthwick cod', 'borthwick cod drill', 'borthwick drill'],
-    ballThrow: ['ballthrow', 'ball throw', 'rotational med ball', 'rotational med ball throw', 'med ball throw', 'medicine ball throw', 'rotational throw']
+    ballThrow: ['ballthrow', 'ball throw', 'rotational med ball', 'rotational med ball throw', 'med ball throw', 'medicine ball throw', 'rotational throw'],
+    shIRD: ['shird', 'shoulder ir range, dominant', 'shoulder ir range, dominant (°)', 'ir dominant', 'ir d', 'shoulder ir d', 'ir rom d', 'ir rom dominant'],
+    shIRN: ['shirn', 'shoulder ir range, non-dominant', 'shoulder ir range, non-dominant (°)', 'ir non-dominant', 'ir nd', 'shoulder ir nd', 'ir rom nd', 'ir rom non-dominant'],
+    shERD: ['sherd', 'shoulder er range, dominant', 'shoulder er range, dominant (°)', 'er dominant', 'er d', 'shoulder er d', 'er rom d', 'er rom dominant'],
+    shERN: ['shern', 'shoulder er range, non-dominant', 'shoulder er range, non-dominant (°)', 'er non-dominant', 'er nd', 'shoulder er nd', 'er rom nd', 'er rom non-dominant'],
+    shTRD: ['shtrd', 'shoulder total range, dominant', 'shoulder total range, dominant (°)', 'trom d', 'total rom d', 'total range dominant'],
+    shTRN: ['shtrn', 'shoulder total range, non-dominant', 'shoulder total range, non-dominant (°)', 'trom nd', 'total rom nd', 'total range non-dominant'],
+    shTRDiff: ['shtrdiff', 'shoulder total range difference', 'shoulder total range difference (°)', 'trom difference', 'trom diff', 'total rom difference'],
+    shGIRD: ['shgird', 'ir loss vs other arm', 'ir loss vs other arm (°)', 'gird', 'ir deficit', 'ir loss'],
+    shERsD: ['shersd', 'shoulder er strength, dominant', 'shoulder er strength, dominant (N)', 'er strength d', 'er strength dominant', 'er iso d', 'isometric er d'],
+    shERsN: ['shersn', 'shoulder er strength, non-dominant', 'shoulder er strength, non-dominant (N)', 'er strength nd', 'er strength non-dominant', 'er iso nd', 'isometric er nd'],
+    shIRsD: ['shirsd', 'shoulder ir strength, dominant', 'shoulder ir strength, dominant (N)', 'ir strength d', 'ir strength dominant', 'ir iso d', 'isometric ir d'],
+    shIRsN: ['shirsn', 'shoulder ir strength, non-dominant', 'shoulder ir strength, non-dominant (N)', 'ir strength nd', 'ir strength non-dominant', 'ir iso nd', 'isometric ir nd'],
+    shERIRD: ['sherird', 'er:ir strength ratio, dominant', 'er:ir d', 'er/ir d', 'er ir ratio d', 'er:ir dominant'],
+    shERIRN: ['sherirn', 'er:ir strength ratio, non-dominant', 'er:ir nd', 'er/ir nd', 'er ir ratio nd', 'er:ir non-dominant'],
+    trRotL: ['trrotl', 'trunk rotation strength, to left', 'trunk rotation strength, to left (N)', 'trunk rotation l', 'rotation l', 'rotation left', 'trunk rot l'],
+    trRotR: ['trrotr', 'trunk rotation strength, to right', 'trunk rotation strength, to right (N)', 'trunk rotation r', 'rotation r', 'rotation right', 'trunk rot r'],
+    trRotAsym: ['trrotasym', 'trunk rotation difference', 'trunk rotation difference (%)', 'rotation asymmetry', 'trunk rotation asymmetry'],
+    mbFH: ['mbfh', 'med ball forehand side throw', 'med ball forehand side throw (m)', 'mb forehand', 'mbft', 'med ball forehand', 'forehand throw'],
+    mbBH: ['mbbh', 'med ball backhand side throw', 'med ball backhand side throw (m)', 'mb backhand', 'mbbt', 'med ball backhand', 'backhand throw'],
+    mbAsym: ['mbasym', 'med ball forehand/backhand difference', 'med ball forehand/backhand difference (%)', 'throw asymmetry', 'mb asymmetry'],
+    hipIRL: ['hipirl', 'hip ir range, left', 'hip ir range, left (°)', 'hip ir l', 'hip ir left'],
+    hipIRR: ['hipirr', 'hip ir range, right', 'hip ir range, right (°)', 'hip ir r', 'hip ir right'],
+    hipERL: ['hiperl', 'hip er range, left', 'hip er range, left (°)', 'hip er l', 'hip er left'],
+    hipERR: ['hiperr', 'hip er range, right', 'hip er range, right (°)', 'hip er r', 'hip er right'],
+    hipIRDiff: ['hipirdiff', 'hip ir range difference', 'hip ir range difference (°)', 'hip ir difference', 'hip ir diff'],
+    addL: ['addl', 'adductor squeeze, left', 'adductor squeeze, left (N)', 'adductor l', 'add l', 'adductor left', 'adductor squeeze l'],
+    addR: ['addr', 'adductor squeeze, right', 'adductor squeeze, right (N)', 'adductor r', 'add r', 'adductor right', 'adductor squeeze r'],
+    abdL: ['abdl', 'abductor strength, left', 'abductor strength, left (N)', 'abductor l', 'abd l', 'abductor left'],
+    abdR: ['abdr', 'abductor strength, right', 'abductor strength, right (N)', 'abductor r', 'abd r', 'abductor right'],
+    addAbdL: ['addabdl', 'adductor:abductor ratio, left', 'add:abd l', 'add/abd l'],
+    addAbdR: ['addabdr', 'adductor:abductor ratio, right', 'add:abd r', 'add/abd r'],
+    slcmjL: ['slcmjl', 'single-leg cmj left', 'single-leg cmj left (cm)', 'sl cmj l', 'slcmj l', 'single leg cmj l', 'single leg cmj left'],
+    slcmjR: ['slcmjr', 'single-leg cmj right', 'single-leg cmj right (cm)', 'sl cmj r', 'slcmj r', 'single leg cmj r', 'single leg cmj right'],
+    slcmjAsym: ['slcmjasym', 'single-leg cmj difference', 'single-leg cmj difference (%)', 'sl cmj asymmetry', 'slcmj asymmetry'],
+    hopAsym: ['hopasym', 'hop difference', 'hop difference (%)', 'hop asymmetry'],
+    hop3Asym: ['hop3asym', 'triple hop difference', 'triple hop difference (%)', 'triple hop asymmetry'],
+    codAsym: ['codasym', 'cod left/right difference', 'cod left/right difference (%)', 'cod asymmetry', '505 asymmetry'],
+    calfL: ['calfl', 'single-leg calf raises, left', 'single-leg calf raises, left (reps)', 'calf raise l', 'calf l', 'calf raises left'],
+    calfR: ['calfr', 'single-leg calf raises, right', 'single-leg calf raises, right (reps)', 'calf raise r', 'calf r', 'calf raises right'],
+    calfAsym: ['calfasym', 'calf raise difference', 'calf raise difference (%)', 'calf asymmetry'],
+    gripD: ['gripd', 'grip strength, dominant', 'grip strength, dominant (kg)', 'grip d', 'grip dominant', 'handgrip d'],
+    gripN: ['gripn', 'grip strength, non-dominant', 'grip strength, non-dominant (kg)', 'grip nd', 'grip non-dominant', 'handgrip nd'],
+    wristD: ['wristd', 'wrist extension strength, dominant', 'wrist extension strength, dominant (N)', 'wrist extension d', 'wrist ext d', 'wrist extension dominant'],
+    wristN: ['wristn', 'wrist extension strength, non-dominant', 'wrist extension strength, non-dominant (N)', 'wrist extension nd', 'wrist ext nd', 'wrist extension non-dominant'],
+    painMax: ['painmax', 'highest pain score, last 7 days', 'highest pain score, last 7 days (/10)', 'pain', 'pain score', 'max pain', 'highest pain']
   };
   const normHead = h => String(h ?? '').trim().toLowerCase().replace(/\s+/g, ' ').replace(/[’`]/g, "'");
 
@@ -842,7 +935,15 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
     hopL: { a: 148, b: 8, boy: 4, sd: 12 }, hopR: { a: 148, b: 8, boy: 4, sd: 12 }, hop3L: { a: 450, b: 25, boy: 12, sd: 35 }, hop3R: { a: 450, b: 25, boy: 12, sd: 35 },
     sj: { a: 24, b: 2.1, boy: 1.1, sd: 3.2 }, cmjFree: { a: 30, b: 2.6, boy: 1.3, sd: 3.8 }, rsi105: { a: 1.1, b: 0.06, boy: 0.03, sd: 0.15 },
     drop30: { a: 1.2, b: 0.07, boy: 0.03, sd: 0.18 }, drop40: { a: 1.15, b: 0.07, boy: 0.03, sd: 0.18 }, ballThrow: { a: 22, b: 2.5, boy: 1.5, sd: 3 },
-    dropDeficit: { a: 0.25, b: -0.01, boy: 0, sd: 0.08 }, tbForceBW: { a: 1.9, b: 0.06, boy: 0.03, sd: 0.2 }, ift3015: { a: 15.5, b: 0.5, boy: 0.3, sd: 1 }, borthwick: { a: 21, b: -0.5, boy: -0.2, sd: 1 }
+    dropDeficit: { a: 0.25, b: -0.01, boy: 0, sd: 0.08 }, tbForceBW: { a: 1.9, b: 0.06, boy: 0.03, sd: 0.2 }, ift3015: { a: 15.5, b: 0.5, boy: 0.3, sd: 1 }, borthwick: { a: 21, b: -0.5, boy: -0.2, sd: 1 },
+    shIRD: { a: 55, b: -2, boy: 0, sd: 8 }, shIRN: { a: 63, b: -1.5, boy: 0, sd: 8 }, shERD: { a: 102, b: -1.5, boy: 0, sd: 9 }, shERN: { a: 98, b: -1.5, boy: 0, sd: 9 },
+    shERsD: { a: 72, b: 8, boy: 4, sd: 12 }, shERsN: { a: 68, b: 8, boy: 4, sd: 12 }, shIRsD: { a: 95, b: 11, boy: 6, sd: 16 }, shIRsN: { a: 85, b: 10, boy: 5, sd: 15 },
+    trRotL: { a: 120, b: 15, boy: 8, sd: 12 }, trRotR: { a: 120, b: 15, boy: 8, sd: 12 }, mbFH: { a: 7.5, b: 0.8, boy: 0.4, sd: 0.6 }, mbBH: { a: 7.2, b: 0.8, boy: 0.4, sd: 0.6 },
+    hipIRL: { a: 50, b: -1, boy: 0, sd: 7 }, hipIRR: { a: 50, b: -1, boy: 0, sd: 7 }, hipERL: { a: 58, b: -0.5, boy: 0, sd: 7 }, hipERR: { a: 58, b: -0.5, boy: 0, sd: 7 },
+    addL: { a: 125, b: 15, boy: 8, sd: 12 }, addR: { a: 125, b: 15, boy: 8, sd: 12 }, abdL: { a: 135, b: 15, boy: 8, sd: 12 }, abdR: { a: 135, b: 15, boy: 8, sd: 12 },
+    slcmjL: { a: 12, b: 1.2, boy: 0.8, sd: 2.3 }, slcmjR: { a: 12, b: 1.2, boy: 0.8, sd: 2.3 }, calfL: { a: 22, b: 1.5, boy: 0.5, sd: 4 }, calfR: { a: 22, b: 1.5, boy: 0.5, sd: 4 },
+    gripD: { a: 22, b: 4, boy: 2.5, sd: 4 }, gripN: { a: 19, b: 3.5, boy: 2, sd: 4 }, wristD: { a: 60, b: 8, boy: 4, sd: 12 }, wristN: { a: 55, b: 7, boy: 4, sd: 11 },
+    painMax: { a: 1.2, b: 0, boy: 0, sd: 0.9 }
   };
   function demoSquad(today = new Date()) {
     let seed = 20261003;
@@ -885,7 +986,9 @@ window.GM_REF = {"age0":4,"step":0.25,"source":"UK90 median (Cole, Freeman & Pre
           METRICS.forEach((m, k) => {
             if (m.derive) return;
             const g = DEMO_PERF[m.key], z = talent + spread[k] + gauss() * 0.35, boy = sex === 'M' ? Math.max(0, ba - 13) * g.boy : 0;
-            const v = g.a + g.b * (ba - 12) + boy + (m.lower ? -1 : 1) * z * g.sd;
+            let v = g.a + g.b * (ba - 12) + boy + (m.lower ? -1 : 1) * z * g.sd;
+            if (m.min != null) v = Math.max(m.min, v);
+            if (m.max != null) v = Math.min(m.max, v);
             sc[m.key] = +v.toFixed(m.d);
           });
           tests.push(sc);
